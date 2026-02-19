@@ -1,3 +1,5 @@
+# app.py - AI价到 - 小微外贸智能报价助手
+
 import streamlit as st
 import pandas as pd
 import math
@@ -327,14 +329,27 @@ def load_product_data_from_excel():
                 return {
                     "success": True,
                     "data": {
-                        "product_name": str(latest.iloc[0]) if pd.notna(latest.iloc[0]) else "",
-                        "hs_code": str(latest.iloc[1]) if pd.notna(latest.iloc[1]) else "",
-                        "quantity": float(latest.iloc[2]) if pd.notna(latest.iloc[2]) else 0,
-                        "price_per_ct": float(latest.iloc[3]) if pd.notna(latest.iloc[3]) else 0,
-                        "volume_per_pack": float(latest.iloc[4]) if pd.notna(latest.iloc[4]) else 0,
-                        "weight_per_pack": float(latest.iloc[5]) if pd.notna(latest.iloc[5]) else 0,
-                        "description": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else "",
-                        "fetch_time": str(latest.iloc[7]) if len(df.columns) > 7 and pd.notna(latest.iloc[7]) else format_beijing_time()
+                        "product_code": str(latest.iloc[0]) if len(df.columns) > 0 and pd.notna(latest.iloc[0]) else "N003",
+                        "goods_type": str(latest.iloc[1]) if len(df.columns) > 1 and pd.notna(latest.iloc[1]) else "宝石或半宝石",
+                        "product_name": str(latest.iloc[2]) if len(df.columns) > 2 and pd.notna(latest.iloc[2]) else "蓝宝石",
+                        "product_name_en": str(latest.iloc[3]) if len(df.columns) > 3 and pd.notna(latest.iloc[3]) else "Sapphires",
+                        "specification_cn": str(latest.iloc[4]) if len(df.columns) > 4 and pd.notna(latest.iloc[4]) else "已加工，未镶嵌，天然，无等级，刚玉",
+                        "specification_en": str(latest.iloc[5]) if len(df.columns) > 5 and pd.notna(latest.iloc[5]) else "Processed,not inlaid,natural,no grade,corundum",
+                        "hs_code": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else "7103910000",
+                        "sales_unit": str(latest.iloc[7]) if len(df.columns) > 7 and pd.notna(latest.iloc[7]) else "克拉（CT）",
+                        "quantity": float(latest.iloc[8]) if len(df.columns) > 8 and pd.notna(latest.iloc[8]) else 0,
+                        "price_per_ct": float(latest.iloc[9]) if len(df.columns) > 9 and pd.notna(latest.iloc[9]) else 0,
+                        "package_unit": str(latest.iloc[10]) if len(df.columns) > 10 and pd.notna(latest.iloc[10]) else "纸箱（CARTON）",
+                        "unit_conversion": str(latest.iloc[11]) if len(df.columns) > 11 and pd.notna(latest.iloc[11]) else "1000CT/CARTON",
+                        "gross_weight": float(latest.iloc[12]) if len(df.columns) > 12 and pd.notna(latest.iloc[12]) else 0.70,
+                        "net_weight": float(latest.iloc[13]) if len(df.columns) > 13 and pd.notna(latest.iloc[13]) else 0.20,
+                        "volume_per_pack": float(latest.iloc[14]) if len(df.columns) > 14 and pd.notna(latest.iloc[14]) else 0.0400,
+                        "legal_unit": str(latest.iloc[15]) if len(df.columns) > 15 and pd.notna(latest.iloc[15]) else "克拉（CT）",
+                        "customs_supervision": str(latest.iloc[16]) if len(df.columns) > 16 and pd.notna(latest.iloc[16]) else "无",
+                        "inspection_category": str(latest.iloc[17]) if len(df.columns) > 17 and pd.notna(latest.iloc[17]) else "无",
+                        "transport_notes": str(latest.iloc[18]) if len(df.columns) > 18 and pd.notna(latest.iloc[18]) else "无",
+                        "description": str(latest.iloc[19]) if len(df.columns) > 19 and pd.notna(latest.iloc[19]) else "",
+                        "fetch_time": str(latest.iloc[20]) if len(df.columns) > 20 and pd.notna(latest.iloc[20]) else format_beijing_time()
                     }
                 }
         except Exception as e:
@@ -620,55 +635,139 @@ with col_right:
     # 如果session中有抓取的商品数据，使用它
     default_product = st.session_state.product_data if st.session_state.product_data else {}
     
+    # 商品编号
+    product_code = st.text_input("商品编号", 
+                                value=default_product.get("product_code", "N003"), 
+                                placeholder="例如: N003",
+                                key="product_code_input")
+    
+    # 货物类型
+    goods_type = st.text_input("货物类型", 
+                              value=default_product.get("goods_type", "宝石或半宝石"), 
+                              placeholder="例如: 宝石或半宝石",
+                              key="goods_type_input")
+    
     # 商品名称
     product_name = st.text_input("商品名称", 
-                                value=default_product.get("product_name", ""), 
+                                value=default_product.get("product_name", "蓝宝石"), 
                                 placeholder="例如: 蓝宝石",
                                 key="product_name_input")
     
+    # 英文名称
+    product_name_en = st.text_input("英文名称", 
+                                   value=default_product.get("product_name_en", "Sapphires"), 
+                                   placeholder="例如: Sapphires",
+                                   key="product_name_en_input")
+    
+    # 规格型号（中文）
+    specification_cn = st.text_input("规格型号（中文）", 
+                                    value=default_product.get("specification_cn", "已加工，未镶嵌，天然，无等级，刚玉"), 
+                                    placeholder="例如: 已加工，未镶嵌，天然，无等级，刚玉",
+                                    key="specification_cn_input")
+    
+    # 规格型号（英文）
+    specification_en = st.text_input("规格型号（英文）", 
+                                    value=default_product.get("specification_en", "Processed,not inlaid,natural,no grade,corundum"), 
+                                    placeholder="例如: Processed,not inlaid,natural,no grade,corundum",
+                                    key="specification_en_input")
+    
     # HS编码
     hs_code = st.text_input("HS编码", 
-                           value=default_product.get("hs_code", ""), 
+                           value=default_product.get("hs_code", "7103910000"), 
                            placeholder="例如: 7103910000",
                            key="hs_code_input")
     
-    # 数量和单价
+    # 销售单位和数量
     col_q1, col_q2 = st.columns(2)
     with col_q1:
+        sales_unit = st.text_input("销售单位", 
+                                  value=default_product.get("sales_unit", "克拉（CT）"), 
+                                  placeholder="例如: 克拉（CT）",
+                                  key="sales_unit_input")
+    
+    with col_q2:
         quantity = st.number_input("数量 (克拉)", 
                                   value=default_product.get("quantity", 0), 
                                   step=100, 
                                   min_value=0,
                                   key="quantity_input")
     
-    with col_q2:
-        price_per_ct = st.number_input("采购单价 (￥/克拉)", 
-                                      value=default_product.get("price_per_ct", 0.0), 
-                                      step=1.0,
-                                      min_value=0.0,
-                                      key="price_input")
+    # 采购单价
+    price_per_ct = st.number_input("采购单价 (￥/克拉)", 
+                                  value=default_product.get("price_per_ct", 0.0), 
+                                  step=1.0,
+                                  min_value=0.0,
+                                  key="price_input")
     
     # 包装信息
     st.markdown("**包装信息**")
+    
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        volume_per_pack = st.number_input("单箱体积 (CBM)", 
-                                         value=default_product.get("volume_per_pack", 0.0), 
-                                         format="%.3f",
-                                         min_value=0.0,
-                                         key="volume_input")
+        package_unit = st.text_input("包装单位", 
+                                    value=default_product.get("package_unit", "纸箱（CARTON）"), 
+                                    placeholder="例如: 纸箱（CARTON）",
+                                    key="package_unit_input")
     
     with col_p2:
-        weight_per_pack = st.number_input("单箱毛重 (KG)", 
-                                         value=default_product.get("weight_per_pack", 0.0), 
-                                         format="%.2f",
-                                         min_value=0.0,
-                                         key="weight_input")
+        unit_conversion = st.text_input("单位换算", 
+                                       value=default_product.get("unit_conversion", "1000CT/CARTON"), 
+                                       placeholder="例如: 1000CT/CARTON",
+                                       key="unit_conversion_input")
     
-    # 商品描述
+    col_p3, col_p4 = st.columns(2)
+    with col_p3:
+        gross_weight = st.number_input("毛重 (KGS/纸箱)", 
+                                      value=default_product.get("gross_weight", 0.70), 
+                                      format="%.2f",
+                                      min_value=0.0,
+                                      key="gross_weight_input")
+    
+    with col_p4:
+        net_weight = st.number_input("净重 (KGS/纸箱)", 
+                                    value=default_product.get("net_weight", 0.20), 
+                                    format="%.2f",
+                                    min_value=0.0,
+                                    key="net_weight_input")
+    
+    # 体积
+    volume_per_pack = st.number_input("体积 (CBM/纸箱)", 
+                                     value=default_product.get("volume_per_pack", 0.0400), 
+                                     format="%.4f",
+                                     min_value=0.0,
+                                     key="volume_input")
+    
+    # 海关信息
+    st.markdown("**海关信息**")
+    
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        legal_unit = st.text_input("法定单位", 
+                                  value=default_product.get("legal_unit", "克拉（CT）"), 
+                                  placeholder="例如: 克拉（CT）",
+                                  key="legal_unit_input")
+    
+    with col_h2:
+        customs_supervision = st.text_input("海关监管条件", 
+                                           value=default_product.get("customs_supervision", "无"), 
+                                           placeholder="例如: 无",
+                                           key="customs_supervision_input")
+    
+    inspection_category = st.text_input("检验检疫类别", 
+                                       value=default_product.get("inspection_category", "无"), 
+                                       placeholder="例如: 无",
+                                       key="inspection_category_input")
+    
+    # 运输说明
+    transport_notes = st.text_input("运输说明", 
+                                   value=default_product.get("transport_notes", "无"), 
+                                   placeholder="例如: 无",
+                                   key="transport_notes_input")
+    
+    # 商品描述（可选）
     description = st.text_area("商品描述", 
                               value=default_product.get("description", ""), 
-                              placeholder="请输入商品描述",
+                              placeholder="请输入补充商品描述",
                               key="description_input", height=80)
     
     # 显示抓取时间
@@ -725,7 +824,20 @@ with col_result3:
               delta=f"{profit_margin}% 利润率")
 
 with col_result4:
-    total_packages = math.ceil(quantity/100) if quantity > 0 else 0
+    # 根据单位换算计算总箱数
+    if quantity > 0 and unit_conversion:
+        try:
+            # 解析单位换算，例如 "1000CT/CARTON"
+            conversion_parts = unit_conversion.split('/')
+            if len(conversion_parts) == 2:
+                ct_per_carton = float(conversion_parts[0].replace('CT', '').strip())
+                total_packages = math.ceil(quantity / ct_per_carton)
+            else:
+                total_packages = math.ceil(quantity / 1000)  # 默认1000CT/箱
+        except:
+            total_packages = math.ceil(quantity / 1000)  # 解析失败时使用默认值
+    else:
+        total_packages = 0
     st.metric("总箱数", f"{total_packages:,} 箱")
 
 # 显示详细商品信息
@@ -740,7 +852,7 @@ if quantity > 0:
         total_volume = total_packages * volume_per_pack if total_packages > 0 else 0
         st.info(f"**总体积:** {total_volume:.2f} CBM")
     with col_detail4:
-        total_weight = total_packages * weight_per_pack if total_packages > 0 else 0
+        total_weight = total_packages * gross_weight if total_packages > 0 else 0
         st.info(f"**总毛重:** {total_weight:.2f} KG")
 
 # 显示贸易术语详情
@@ -819,7 +931,8 @@ with col_footer1:
 with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
-    st.markdown("PAD数据源: 阿里巴巴询价页 / 国内采购市场 / 中国银行")
+    st.markdown("PAD数据源: 阿里巴巴国际站询价页 / 公司ERP / 中国银行")
+
 
 
 
