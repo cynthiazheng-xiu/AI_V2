@@ -102,66 +102,6 @@ DEFAULT_RATES = {
     "SGD": 5.4721   # 新加坡元
 }
 
-# 商品预设数据
-product_presets = {
-    "蓝宝石 (Sapphires)": {
-        "hs_code": "7103910000",
-        "price_per_ct": 50.0,
-        "volume_per_pack": 0.04,
-        "weight_per_pack": 0.7,
-        "description": "天然蓝宝石，优质切割",
-        "category": "宝石"
-    },
-    "红宝石 (Rubies)": {
-        "hs_code": "7103910000",
-        "price_per_ct": 80.0,
-        "volume_per_pack": 0.035,
-        "weight_per_pack": 0.6,
-        "description": "缅甸红宝石，色泽鲜艳",
-        "category": "宝石"
-    },
-    "祖母绿 (Emeralds)": {
-        "hs_code": "7103910000",
-        "price_per_ct": 120.0,
-        "volume_per_pack": 0.045,
-        "weight_per_pack": 0.8,
-        "description": "哥伦比亚祖母绿，高净度",
-        "category": "宝石"
-    },
-    "钻石 (Diamonds)": {
-        "hs_code": "7102390000",
-        "price_per_ct": 500.0,
-        "volume_per_pack": 0.03,
-        "weight_per_pack": 0.5,
-        "description": "天然钻石，1克拉以上",
-        "category": "宝石"
-    },
-    "水晶 (Crystals)": {
-        "hs_code": "7103999000",
-        "price_per_ct": 15.0,
-        "volume_per_pack": 0.05,
-        "weight_per_pack": 1.0,
-        "description": "天然水晶，多种颜色",
-        "category": "半宝石"
-    },
-    "玛瑙 (Agate)": {
-        "hs_code": "7103999000",
-        "price_per_ct": 8.0,
-        "volume_per_pack": 0.06,
-        "weight_per_pack": 1.2,
-        "description": "巴西玛瑙，天然纹路",
-        "category": "半宝石"
-    },
-    "自定义商品": {
-        "hs_code": "",
-        "price_per_ct": 0.0,
-        "volume_per_pack": 0.0,
-        "weight_per_pack": 0.0,
-        "description": "手动输入商品信息",
-        "category": "其他"
-    }
-}
-
 # 从Excel加载汇率数据的函数
 def load_rates_from_excel():
     """从PAD生成的Excel文件加载汇率数据"""
@@ -282,8 +222,6 @@ def run_pad_flow(flow_name):
         return {"success": False, "message": str(e)}
 
 # 初始化session state
-if 'current_product' not in st.session_state:
-    st.session_state.current_product = "蓝宝石 (Sapphires)"  # 保留默认商品选项
 if 'quote_history' not in st.session_state:
     st.session_state.quote_history = []
 if 'selected_currency' not in st.session_state:
@@ -351,7 +289,6 @@ with col_pad2:
                 if product_result["success"]:
                     st.session_state.product_data = product_result["data"]
                     st.session_state.product_fetched = True
-                    st.session_state.current_product = "自定义商品"
                     st.rerun()
                 else:
                     st.warning("未找到商品数据文件，请确保PAD流程已正确运行")
@@ -527,126 +464,65 @@ with col_right:
     if st.session_state.product_fetched:
         st.success("✅ 已从PAD抓取商品数据")
     else:
-        st.info("⏳ 点击上方'抓取商品信息'按钮从采购市场获取商品数据")
-    
-    # 商品快速切换（保留预设商品选项）
-    st.markdown("**快速选择预设商品：**")
-    
-    categories = {}
-    for product_name, product_data in product_presets.items():
-        category = product_data.get("category", "其他")
-        if category not in categories:
-            categories[category] = []
-        categories[category].append(product_name)
-    
-    for category, products in categories.items():
-        if category != "其他":
-            st.markdown(f"**{category}**")
-            cols = st.columns(min(4, len(products)))
-            for i, product_name in enumerate(products[:4]):
-                with cols[i]:
-                    if st.button(product_name.split()[0], key=f"btn_{product_name}", use_container_width=True):
-                        st.session_state.current_product = product_name
-                        st.session_state.product_fetched = False  # 切换预设商品时清除抓取状态
-                        st.session_state.product_data = {}  # 清空抓取的数据
-                        st.rerun()
-    
-    st.markdown("---")
+        st.info("⏳ 点击上方'抓取商品信息'按钮从采购市场获取商品数据，或手动输入")
     
     # 如果session中有抓取的商品数据，使用它
     default_product = st.session_state.product_data if st.session_state.product_data else {}
     
-    if st.session_state.current_product == "自定义商品" and default_product:
-        # 显示抓取的商品数据
-        product_name = st.text_input("商品名称", 
-                                    value=default_product.get("product_name", ""), 
-                                    placeholder="例如: 蓝宝石",
-                                    key="product_name_custom")
-        hs_code = st.text_input("HS编码", 
-                               value=default_product.get("hs_code", ""), 
-                               placeholder="例如: 7103910000",
-                               key="hs_code_custom")
-    elif st.session_state.current_product != "自定义商品":
-        # 显示预设商品
-        selected_preset = product_presets[st.session_state.current_product]
-        product_name = st.text_input("商品名称", st.session_state.current_product, disabled=True, key="product_name")
-        hs_code = st.text_input("HS编码", selected_preset["hs_code"], key="hs_code")
-    else:
-        # 自定义商品但未抓取数据
-        product_name = st.text_input("商品名称", "", placeholder="请输入商品名称", key="product_name_custom")
-        hs_code = st.text_input("HS编码", "", placeholder="例如: 7103910000", key="hs_code_custom")
+    # 商品名称
+    product_name = st.text_input("商品名称", 
+                                value=default_product.get("product_name", ""), 
+                                placeholder="例如: 蓝宝石",
+                                key="product_name_input")
+    
+    # HS编码
+    hs_code = st.text_input("HS编码", 
+                           value=default_product.get("hs_code", ""), 
+                           placeholder="例如: 7103910000",
+                           key="hs_code_input")
     
     # 数量和单价
     col_q1, col_q2 = st.columns(2)
     with col_q1:
-        if st.session_state.current_product == "自定义商品" and default_product.get("quantity"):
-            quantity = st.number_input("数量 (克拉)", 
-                                      value=default_product["quantity"], 
-                                      step=100, key="quantity_custom")
-        elif st.session_state.current_product != "自定义商品":
-            quantity = st.number_input("数量 (克拉)", value=5000, step=100, key="quantity")
-        else:
-            quantity = st.number_input("数量 (克拉)", value=0, step=100, key="quantity_custom")
+        quantity = st.number_input("数量 (克拉)", 
+                                  value=default_product.get("quantity", 0), 
+                                  step=100, 
+                                  min_value=0,
+                                  key="quantity_input")
     
     with col_q2:
-        if st.session_state.current_product == "自定义商品":
-            if default_product.get("price_per_ct"):
-                price_per_ct = st.number_input("采购单价 (￥/克拉)", 
-                                              value=default_product["price_per_ct"], 
-                                              step=1.0, key="price_custom")
-            else:
-                price_per_ct = st.number_input("采购单价 (￥/克拉)", value=0.0, step=1.0, key="price_custom")
-        else:
-            price_per_ct = st.number_input("采购单价 (￥/克拉)", 
-                                          value=selected_preset["price_per_ct"], 
-                                          step=1.0, key="price")
+        price_per_ct = st.number_input("采购单价 (￥/克拉)", 
+                                      value=default_product.get("price_per_ct", 0.0), 
+                                      step=1.0,
+                                      min_value=0.0,
+                                      key="price_input")
     
     # 包装信息
     st.markdown("**包装信息**")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        if st.session_state.current_product == "自定义商品":
-            if default_product.get("volume_per_pack"):
-                volume_per_pack = st.number_input("单箱体积 (CBM)", 
-                                                 value=default_product["volume_per_pack"], 
-                                                 format="%.3f", key="volume_custom")
-            else:
-                volume_per_pack = st.number_input("单箱体积 (CBM)", value=0.0, format="%.3f", key="volume_custom")
-        else:
-            volume_per_pack = st.number_input("单箱体积 (CBM)", 
-                                             value=selected_preset["volume_per_pack"], 
-                                             format="%.3f", key="volume")
+        volume_per_pack = st.number_input("单箱体积 (CBM)", 
+                                         value=default_product.get("volume_per_pack", 0.0), 
+                                         format="%.3f",
+                                         min_value=0.0,
+                                         key="volume_input")
     
     with col_p2:
-        if st.session_state.current_product == "自定义商品":
-            if default_product.get("weight_per_pack"):
-                weight_per_pack = st.number_input("单箱毛重 (KG)", 
-                                                 value=default_product["weight_per_pack"], 
-                                                 format="%.2f", key="weight_custom")
-            else:
-                weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.0, format="%.2f", key="weight_custom")
-        else:
-            weight_per_pack = st.number_input("单箱毛重 (KG)", 
-                                             value=selected_preset["weight_per_pack"], 
-                                             format="%.2f", key="weight")
+        weight_per_pack = st.number_input("单箱毛重 (KG)", 
+                                         value=default_product.get("weight_per_pack", 0.0), 
+                                         format="%.2f",
+                                         min_value=0.0,
+                                         key="weight_input")
     
-    # 显示商品描述
-    if st.session_state.current_product != "自定义商品":
-        st.info(f"📝 {selected_preset['description']}")
-    elif default_product.get("description"):
-        st.info(f"📝 {default_product['description']}")
+    # 商品描述
+    description = st.text_area("商品描述", 
+                              value=default_product.get("description", ""), 
+                              placeholder="请输入商品描述",
+                              key="description_input", height=80)
     
     # 显示抓取时间
     if default_product.get("fetch_time"):
         st.info(f"📌 PAD抓取时间: {default_product['fetch_time']}")
-    
-    # 添加自定义商品按钮
-    if st.session_state.current_product != "自定义商品":
-        if st.button("➕ 手动输入商品", use_container_width=True):
-            st.session_state.current_product = "自定义商品"
-            st.session_state.product_fetched = False
-            st.session_state.product_data = {}
-            st.rerun()
 
 # ==================== 计算结果区域 ====================
 st.markdown("---")
@@ -661,7 +537,7 @@ with col_btn1:
             
             quote_record = {
                 "date": format_beijing_time(),
-                "product": product_name,
+                "product": product_name if product_name else "未命名商品",
                 "customer": customer if customer else "未填写客户",
                 "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}"
             }
@@ -674,7 +550,7 @@ with col_btn1:
 
 with col_btn2:
     if st.button("📧 发送报价", use_container_width=True):
-        if customer and product_name and quantity > 0:
+        if customer and product_name and quantity > 0 and price_per_ct > 0:
             st.info("报价单已准备发送！")
         else:
             st.warning("请先填写完整的客户和商品信息")
@@ -726,6 +602,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴询价页 / 国内采购市场 / 中国银行")
+
 
 
 
