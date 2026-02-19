@@ -1,10 +1,21 @@
 import streamlit as st
 import pandas as pd
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import requests
 import json
 import time
+
+# 获取北京时间的函数
+def get_beijing_time():
+    """返回当前的北京时间"""
+    utc_now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    beijing_now = utc_now.astimezone(timezone(timedelta(hours=8)))
+    return beijing_now
+
+def format_beijing_time(format_str='%Y-%m-%d %H:%M:%S'):
+    """格式化北京时间"""
+    return get_beijing_time().strftime(format_str)
 
 # 页面配置
 st.set_page_config(
@@ -186,7 +197,8 @@ def fetch_customer_data_from_api(source="power_automate"):
                     "customer_email": "john.smith@globaltrade.com",
                     "customer_address": "123 Trade Center, New York, NY 10001, USA",
                     "payment_terms": "L/C at sight",
-                    "source": "Power Automate Desktop - 客户数据库"
+                    "source": "Power Automate Desktop - 客户数据库",
+                    "fetch_time": format_beijing_time()
                 }
             }
         elif source == "alibaba":
@@ -201,7 +213,8 @@ def fetch_customer_data_from_api(source="power_automate"):
                     "customer_email": "li.wei@alibaba.com",
                     "customer_address": "969 West Wen'er Road, Hangzhou, China",
                     "payment_terms": "T/T 30% deposit",
-                    "source": "Alibaba.com API"
+                    "source": "Alibaba.com API",
+                    "fetch_time": format_beijing_time()
                 }
             }
         elif source == "made_in_china":
@@ -215,7 +228,8 @@ def fetch_customer_data_from_api(source="power_automate"):
                     "customer_email": "fang.wang@made-in-china.com",
                     "customer_address": "Berlin Trade Center, Germany",
                     "payment_terms": "D/P",
-                    "source": "Made-in-China.com API"
+                    "source": "Made-in-China.com API",
+                    "fetch_time": format_beijing_time()
                 }
             }
         else:
@@ -246,7 +260,8 @@ def fetch_product_data_from_api(source="power_automate"):
                     "volume_per_pack": 0.045,
                     "weight_per_pack": 0.75,
                     "description": "高级蓝宝石，通过Power Automate抓取的商品数据",
-                    "source": "Power Automate Desktop - 商品管理系统"
+                    "source": "Power Automate Desktop - 商品管理系统",
+                    "fetch_time": format_beijing_time()
                 }
             }
         elif source == "gemstone_database":
@@ -261,7 +276,8 @@ def fetch_product_data_from_api(source="power_automate"):
                     "volume_per_pack": 0.038,
                     "weight_per_pack": 0.65,
                     "description": "缅甸红宝石，来自宝石数据库",
-                    "source": "Gemstone Database API"
+                    "source": "Gemstone Database API",
+                    "fetch_time": format_beijing_time()
                 }
             }
         elif source == "supplier_portal":
@@ -276,7 +292,8 @@ def fetch_product_data_from_api(source="power_automate"):
                     "volume_per_pack": 0.05,
                     "weight_per_pack": 0.85,
                     "description": "哥伦比亚祖母绿，来自供应商门户",
-                    "source": "Supplier Portal API"
+                    "source": "Supplier Portal API",
+                    "fetch_time": format_beijing_time()
                 }
             }
         else:
@@ -424,11 +441,11 @@ with st.sidebar:
         - Ctrl+P: 打印报价单
         """)
     
-    # 系统信息
+    # 系统信息 - 使用北京时间
     st.markdown("---")
-    st.markdown(f"**当前时间:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.markdown(f"**当前时间:** {format_beijing_time()} (北京时间)")
     st.markdown(f"**版本:** v2.1.0")
-    st.markdown(f"**用户:** 管理员")
+    st.markdown(f"**用户:** 郑秀英")
 
 # ==================== 主界面 ====================
 
@@ -440,10 +457,10 @@ st.markdown("""
 </div>
 """.format(company_name), unsafe_allow_html=True)
 
-# 显示当前汇率信息和抓取状态
+# 显示当前汇率信息和抓取状态 - 使用北京时间
 col_status1, col_status2, col_status3 = st.columns(3)
 with col_status1:
-    st.info(f"💰 当前报价货币: {st.session_state.selected_currency} | 汇率: 1 {st.session_state.selected_currency} = {exchange_rates[st.session_state.selected_currency]:.2f} CNY")
+    st.info(f"💰 当前报价货币: {st.session_state.selected_currency} | 汇率: 1 {st.session_state.selected_currency} = {exchange_rates[st.session_state.selected_currency]:.2f} CNY | 北京时间: {format_beijing_time('%H:%M:%S')}")
 with col_status2:
     if st.session_state.customer_data_fetched:
         st.success("✅ 客户数据已从外部网站抓取")
@@ -485,6 +502,7 @@ with col_left:
                     st.session_state.payment_terms = data["payment_terms"]
                     st.session_state.customer_data_fetched = True
                     st.session_state.customer_source = data.get("source", "未知来源")
+                    st.session_state.customer_fetch_time = data.get("fetch_time", format_beijing_time())
                     st.success(f"✅ 成功从{data.get('source', '外部网站')}抓取客户数据！")
                     time.sleep(1)
                     st.rerun()
@@ -527,9 +545,9 @@ with col_left:
     payment_terms = st.selectbox("付款方式", payment_options, 
                                 index=payment_index, key="payment_terms_input")
     
-    # 显示抓取来源信息
+    # 显示抓取来源信息 - 使用北京时间
     if st.session_state.get("customer_data_fetched", False):
-        st.info(f"📌 数据来源: {st.session_state.get('customer_source', '外部网站')} | 抓取时间: {datetime.now().strftime('%H:%M:%S')}")
+        st.info(f"📌 数据来源: {st.session_state.get('customer_source', '外部网站')} | 抓取时间: {st.session_state.get('customer_fetch_time', format_beijing_time())} (北京时间)")
 
 # 右侧：商品信息
 with col_right:
@@ -559,6 +577,7 @@ with col_right:
                     st.session_state.fetched_description = data.get("description", "")
                     st.session_state.product_data_fetched = True
                     st.session_state.product_source = data.get("source", "未知来源")
+                    st.session_state.product_fetch_time = data.get("fetch_time", format_beijing_time())
                     
                     # 设置当前商品为自定义以便显示抓取的数据
                     st.session_state.current_product = "自定义商品"
@@ -669,9 +688,9 @@ with col_right:
     elif st.session_state.get("fetched_description", ""):
         st.info(f"📝 {st.session_state.fetched_description}")
     
-    # 显示抓取来源信息
+    # 显示抓取来源信息 - 使用北京时间
     if st.session_state.get("product_data_fetched", False):
-        st.info(f"📌 数据来源: {st.session_state.get('product_source', '外部网站')} | 抓取时间: {datetime.now().strftime('%H:%M:%S')}")
+        st.info(f"📌 数据来源: {st.session_state.get('product_source', '外部网站')} | 抓取时间: {st.session_state.get('product_fetch_time', format_beijing_time())} (北京时间)")
     
     # 添加自定义商品按钮
     if st.session_state.current_product != "自定义商品":
@@ -691,9 +710,9 @@ with col_btn1:
         total_cost_cny = quantity * price_per_ct
         total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency]
         
-        # 保存到历史
+        # 保存到历史 - 使用北京时间
         quote_record = {
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "date": format_beijing_time(),
             "product": product_name,
             "customer": customer,
             "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}",
@@ -757,7 +776,8 @@ if st.session_state.customer_data_fetched or st.session_state.product_data_fetch
             st.success(f"✅ 商品数据已抓取: {st.session_state.get('fetched_product_name', '')}")
 
 st.markdown("---")
-st.markdown(f"© 2026 {company_name} | 技术支持: AI价到团队 | Power Automate Desktop 集成")
+st.markdown(f"© 2026 {company_name} | 技术支持: AI价到团队 | Power Automate Desktop 集成 | 所有时间均为北京时间")
+
 
 
 
