@@ -67,6 +67,21 @@ st.markdown("""
         color: #999;
         font-style: italic;
     }
+    .term-card {
+        background-color: #f8f9fa;
+        border-left: 4px solid #0A174E;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+    }
+    .term-title {
+        font-weight: bold;
+        color: #0A174E;
+    }
+    .term-desc {
+        font-size: 0.9rem;
+        color: #555;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,6 +116,131 @@ DEFAULT_RATES = {
     "CHF": 8.9762,  # 瑞士法郎
     "SGD": 5.4721   # 新加坡元
 }
+
+# 2020版国际贸易术语完整列表
+INCOTERMS_2020 = [
+    {
+        "code": "EXW",
+        "name": "EXW (工厂交货)",
+        "full_name": "Ex Works",
+        "category": "任一地点",
+        "description": "卖方在其所在地或其他指定地点将货物交给买方处置时即完成交货。卖方不负责装货，也不负责出口清关。卖方承担最小责任，买方负责所有运输、保险和进出口清关。",
+        "responsibility_seller": "在指定地点提供货物",
+        "responsibility_buyer": "所有运输、保险、出口/进口清关、装货",
+        "risk_transfer": "卖方将货物交给买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "FCA",
+        "name": "FCA (货交承运人)",
+        "full_name": "Free Carrier",
+        "category": "主要运费未付",
+        "description": "卖方在指定地点将货物交给买方指定的承运人即完成交货。卖方负责出口清关。如指定地点是卖方所在地，卖方负责装货；如在其他地点，卖方不负责卸货。",
+        "responsibility_seller": "出口清关、将货物交给承运人",
+        "responsibility_buyer": "主运输、保险、进口清关",
+        "risk_transfer": "货物交给承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "FAS",
+        "name": "FAS (船边交货)",
+        "full_name": "Free Alongside Ship",
+        "category": "主要运费未付",
+        "description": "卖方在指定装运港将货物放在船边（例如码头上或驳船上）即完成交货。卖方负责出口清关。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物运至船边",
+        "responsibility_buyer": "装船、主运输、保险、进口清关",
+        "risk_transfer": "货物放在船边时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "FOB",
+        "name": "FOB (船上交货)",
+        "full_name": "Free On Board",
+        "category": "主要运费未付",
+        "description": "卖方在指定装运港将货物装到买方指定的船上即完成交货。卖方负责出口清关。风险和费用在货物装上船时转移。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船",
+        "responsibility_buyer": "主运输、保险、进口清关",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CFR",
+        "name": "CFR (成本加运费)",
+        "full_name": "Cost and Freight",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的港的运费。货物在装运港装上船时风险转移给买方。卖方负责出口清关，但不负责保险。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船、支付至目的港运费",
+        "responsibility_buyer": "保险、进口清关、目的港卸货费",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CIF",
+        "name": "CIF (成本、保险费加运费)",
+        "full_name": "Cost, Insurance and Freight",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的港的运费，并必须购买货物运输保险。货物在装运港装上船时风险转移给买方。卖方负责出口清关。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船、支付至目的港运费和保险费",
+        "responsibility_buyer": "进口清关、目的港卸货费",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CPT",
+        "name": "CPT (运费付至)",
+        "full_name": "Carriage Paid To",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的地的运费。货物交给第一承运人时风险转移给买方。卖方负责出口清关，但不负责保险。适用于任何运输方式。",
+        "responsibility_seller": "出口清关、将货物交给承运人、支付至目的地运费",
+        "responsibility_buyer": "保险、进口清关、目的地卸货费",
+        "risk_transfer": "货物交给第一承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "CIP",
+        "name": "CIP (运费、保险费付至)",
+        "full_name": "Carriage and Insurance Paid To",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的地的运费，并必须购买货物运输保险（比CIF要求更高保额）。货物交给第一承运人时风险转移给买方。卖方负责出口清关。适用于任何运输方式。",
+        "responsibility_seller": "出口清关、将货物交给承运人、支付至目的地运费和保险费",
+        "responsibility_buyer": "进口清关、目的地卸货费",
+        "risk_transfer": "货物交给第一承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DAP",
+        "name": "DAP (目的地交货)",
+        "full_name": "Delivered At Place",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地，并将货物放在已到达的运输工具上（未卸货）交给买方处置即完成交货。卖方负责出口清关和运输，但不负责卸货和进口清关。",
+        "responsibility_seller": "出口清关、运输至指定目的地",
+        "responsibility_buyer": "卸货、进口清关",
+        "risk_transfer": "货物在目的地交由买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DPU",
+        "name": "DPU (卸货地交货)",
+        "full_name": "Delivered At Place Unloaded",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地并卸货后交给买方处置即完成交货。这是Incoterms 2020中唯一要求卖方卸货的术语。卖方负责出口清关和运输。",
+        "responsibility_seller": "出口清关、运输至指定目的地、卸货",
+        "responsibility_buyer": "进口清关",
+        "risk_transfer": "货物卸下并交由买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DDP",
+        "name": "DDP (完税后交货)",
+        "full_name": "Delivered Duty Paid",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地，并完成进口清关后交给买方处置即完成交货。卖方承担所有风险和费用，包括运输、保险、出口和进口关税。卖方承担最大责任。",
+        "responsibility_seller": "所有运输、保险、出口/进口清关、关税支付",
+        "responsibility_buyer": "极少责任，只需在目的地接收货物",
+        "risk_transfer": "货物在目的地交由买方处置时",
+        "transport": "任何运输方式"
+    }
+]
 
 # 从Excel加载汇率数据的函数
 def load_rates_from_excel():
@@ -348,8 +488,19 @@ with st.sidebar:
     with st.expander("📊 报价设置", expanded=True):
         profit_margin = st.slider("默认利润率 (%)", min_value=5, max_value=100, value=20, step=5)
         tax_rate = st.slider("出口退税率 (%)", min_value=0, max_value=17, value=13, step=1)
-        incoterms = st.selectbox("贸易术语", ["FOB", "CIF", "CFR", "EXW", "DDP"])
         
+        # 2020版国际贸易术语选择
+        term_options = [term["name"] for term in INCOTERMS_2020]
+        selected_term = st.selectbox("贸易术语 (Incoterms 2020)", term_options, index=3)  # 默认FOB
+        
+        # 查找选中的术语详情
+        selected_term_detail = next((term for term in INCOTERMS_2020 if term["name"] == selected_term), INCOTERMS_2020[0])
+        
+        # 显示术语简要说明
+        st.info(f"📌 {selected_term_detail['description'][:100]}...")
+        
+        # 附加费用
+        st.markdown("**附加费用 (CNY)**")
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             handling_fee = st.number_input("操作费", value=100, step=10)
@@ -404,7 +555,7 @@ with col_left:
     if st.session_state.customer_fetched:
         st.success("✅ 已从PAD抓取客户数据")
     else:
-        st.info("⏳ 点击上方'抓取客户信息'按钮从阿里巴巴获取客户数据")
+        st.info("⏳ 点击上方'抓取客户信息'按钮从阿里巴巴国际站获取客户数据")
     
     # 如果session中有抓取的数据，使用它；否则留空
     default_customer = st.session_state.customer_data if st.session_state.customer_data else {}
@@ -464,7 +615,7 @@ with col_right:
     if st.session_state.product_fetched:
         st.success("✅ 已从PAD抓取商品数据")
     else:
-        st.info("⏳ 点击上方'抓取商品信息'按钮从采购市场获取商品数据，或手动输入")
+        st.info("⏳ 点击上方'抓取商品信息'按钮从本公司ERP系统抓取商品数据，或手动输入")
     
     # 如果session中有抓取的商品数据，使用它
     default_product = st.session_state.product_data if st.session_state.product_data else {}
@@ -592,6 +743,73 @@ if quantity > 0:
         total_weight = total_packages * weight_per_pack if total_packages > 0 else 0
         st.info(f"**总毛重:** {total_weight:.2f} KG")
 
+# 显示贸易术语详情
+st.markdown("---")
+st.markdown("### 📋 贸易术语详情 - Incoterms 2020")
+
+col_term1, col_term2 = st.columns([1, 2])
+
+with col_term1:
+    st.markdown(f"""
+    <div class="term-card">
+        <div class="term-title">📌 当前选择</div>
+        <div style="font-size: 1.2rem; font-weight: bold;">{selected_term_detail['name']}</div>
+        <div style="font-style: italic;">{selected_term_detail['full_name']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="term-card">
+        <div class="term-title">🚚 适用运输方式</div>
+        <div>{selected_term_detail['transport']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_term2:
+    st.markdown(f"""
+    <div class="term-card">
+        <div class="term-title">📖 详细说明</div>
+        <div>{selected_term_detail['description']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_resp1, col_resp2 = st.columns(2)
+    with col_resp1:
+        st.markdown(f"""
+        <div class="term-card">
+            <div class="term-title">👤 卖方责任</div>
+            <div>{selected_term_detail['responsibility_seller']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_resp2:
+        st.markdown(f"""
+        <div class="term-card">
+            <div class="term-title">👥 买方责任</div>
+            <div>{selected_term_detail['responsibility_buyer']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="term-card">
+        <div class="term-title">⚠️ 风险转移点</div>
+        <div>{selected_term_detail['risk_transfer']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 显示所有贸易术语快速参考
+with st.expander("📚 查看所有 Incoterms 2020 术语"):
+    for term in INCOTERMS_2020:
+        st.markdown(f"""
+        <div class="term-card">
+            <div class="term-title">{term['name']}</div>
+            <div class="term-desc">{term['description'][:150]}...</div>
+            <div style="display: flex; gap: 1rem; margin-top: 0.3rem; font-size: 0.8rem;">
+                <span>🚚 {term['transport']}</span>
+                <span>👤 卖方: {term['responsibility_seller'][:30]}...</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
 st.markdown("---")
 
 # 底部版权
@@ -602,6 +820,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴询价页 / 国内采购市场 / 中国银行")
+
 
 
 
