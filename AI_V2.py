@@ -1,4 +1,4 @@
-# app.py - AI价到 - 小微外贸智能报价助手 (最终修复版)
+# app.py - AI价到 - 小微外贸智能报价助手 (完整版)
 
 import streamlit as st
 import pandas as pd
@@ -23,11 +23,20 @@ st.markdown("""
         background: linear-gradient(135deg, #0A174E 0%, #1D2B5E 100%);
         padding: 1.5rem 2rem;
         border-radius: 20px;
-        color: white !important;
         margin-bottom: 1rem;
+        text-align: center;
     }
     .main-header h1 {
         color: white !important;
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    .main-header .subtitle {
+        color: #FFD700 !important;
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
     }
     .section-header {
         background-color: #f0f2f6;
@@ -76,17 +85,41 @@ st.markdown("""
         border-left: 3px solid #28a745;
         font-weight: bold;
     }
-    /* 确保表头文字为白色 */
-    .main-header, .main-header * {
-        color: white !important;
-    }
-    /* 侧边栏标题样式 */
     .sidebar-header {
         color: #0A174E;
         font-weight: bold;
         font-size: 1.1rem;
         margin-top: 1rem;
         margin-bottom: 0.5rem;
+    }
+    .container-table {
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 5px;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    .container-table table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .container-table th {
+        background-color: #0A174E;
+        color: white;
+        padding: 0.3rem;
+        text-align: center;
+    }
+    .container-table td {
+        padding: 0.3rem;
+        text-align: center;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .shipping-comparison {
+        background-color: #fff3cd;
+        padding: 0.5rem;
+        border-radius: 5px;
+        margin-bottom: 0.5rem;
+        border-left: 3px solid #856404;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -114,11 +147,11 @@ DEFAULT_RATES = {
     "HKD": 0.8858, "AUD": 4.9092, "CAD": 5.0734, "CHF": 8.9762, "SGD": 5.4721
 }
 
-# 集装箱标准尺寸 (CBM)
-CONTAINER_SIZES = {
-    "20GP": 28,  # 20尺普通柜
-    "40GP": 58,  # 40尺普通柜
-    "40HQ": 68   # 40尺高柜
+# 集装箱参数表
+CONTAINER_SPECS = {
+    "20'": {"volume": 33, "weight": 25000},
+    "40'": {"volume": 67, "weight": 29000},
+    "40'高": {"volume": 76, "weight": 29000}
 }
 
 # 2020版国际贸易术语完整列表（简化版）
@@ -134,32 +167,12 @@ INCOTERMS_2020 = [
         "transport": "任何运输方式"
     },
     {
-        "code": "FCA",
-        "name": "FCA (货交承运人)",
-        "full_name": "Free Carrier",
-        "description": "卖方在指定地点将货物交给买方指定的承运人即完成交货。",
-        "responsibility_seller": "出口清关、将货物交给承运人",
-        "responsibility_buyer": "主运输、保险、进口清关",
-        "risk_transfer": "货物交给承运人时",
-        "transport": "任何运输方式"
-    },
-    {
         "code": "FOB",
         "name": "FOB (船上交货)",
         "full_name": "Free On Board",
         "description": "卖方在指定装运港将货物装到买方指定的船上即完成交货。",
         "responsibility_seller": "出口清关、将货物装上船",
         "responsibility_buyer": "主运输、保险、进口清关",
-        "risk_transfer": "货物装上船时",
-        "transport": "海运和内河水运"
-    },
-    {
-        "code": "CFR",
-        "name": "CFR (成本加运费)",
-        "full_name": "Cost and Freight",
-        "description": "卖方支付将货物运至指定目的港的运费。",
-        "responsibility_seller": "出口清关、将货物装上船、支付至目的港运费",
-        "responsibility_buyer": "保险、进口清关、目的港卸货费",
         "risk_transfer": "货物装上船时",
         "transport": "海运和内河水运"
     },
@@ -285,85 +298,132 @@ def run_pad_flow(flow_name):
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-def calculate_shipping_options(total_volume, freight_20, freight_40, freight_40hq, lcl_rate_per_cbm=50):
-    """根据总体积计算最优运输方案"""
+def calculate_shipping_options(total_volume, total_weight, freight_20, freight_40, freight_40hq, lcl_rate_cbm, lcl_rate_kg):
+    """
+    根据总体积和总重量计算所有可能的运输方案
+    1. LCL方案：取体积计费和重量计费的较大值
+    2. 整箱方案：尝试各种集装箱组合，找出满足体积和重量要求的最便宜组合
+    
+    返回: (所有方案列表, 最佳方案索引, 最佳运费)
+    """
     options = []
     
-    # 方案1: 全部使用LCL
-    lcl_cost = total_volume * lcl_rate_per_cbm
+    # ========== 方案1: LCL散货 ==========
+    lcl_volume_cost = total_volume * lcl_rate_cbm
+    lcl_weight_cost = total_weight * lcl_rate_kg / 1000  # 转换为吨计费
+    lcl_cost = max(lcl_volume_cost, lcl_weight_cost)
+    
+    # 判断是轻货还是重货
+    if lcl_volume_cost > lcl_weight_cost:
+        cargo_type = "轻货 (按体积计费)"
+    else:
+        cargo_type = "重货 (按重量计费)"
+    
     options.append({
         "name": "LCL散货",
-        "description": f"散货拼箱",
+        "description": f"散货拼箱 - {cargo_type}",
+        "type": "lcl",
+        "containers": {},
         "cost_usd": lcl_cost,
-        "details": f"{total_volume:.2f} CBM × ${lcl_rate_per_cbm}/CBM"
+        "volume_cost": lcl_volume_cost,
+        "weight_cost": lcl_weight_cost,
+        "details": f"体积计费: ${lcl_volume_cost:,.2f} | 重量计费: ${lcl_weight_cost:,.2f} | 取大值: ${lcl_cost:,.2f}"
     })
     
-    # 方案2: 仅用20GP
-    num_20gp = math.floor(total_volume / CONTAINER_SIZES["20GP"])
-    if num_20gp > 0:
-        remaining = total_volume - num_20gp * CONTAINER_SIZES["20GP"]
-        cost = num_20gp * freight_20
-        if remaining > 0.1:
-            cost += remaining * lcl_rate_per_cbm
-            options.append({
-                "name": f"{num_20gp}×20GP + LCL",
-                "description": f"{num_20gp}个20尺柜 + {remaining:.2f}CBM散货",
-                "cost_usd": cost,
-                "details": f"{num_20gp}×${freight_20} + {remaining:.2f}×${lcl_rate_per_cbm}"
-            })
-        else:
-            options.append({
-                "name": f"{num_20gp}×20GP",
-                "description": f"{num_20gp}个20尺柜",
-                "cost_usd": cost,
-                "details": f"{num_20gp}×${freight_20}"
-            })
+    # ========== 方案2: 整箱运输 ==========
+    container_types = [
+        {"name": "20'", "volume": 33, "weight": 25000, "freight": freight_20},
+        {"name": "40'", "volume": 67, "weight": 29000, "freight": freight_40},
+        {"name": "40'高", "volume": 76, "weight": 29000, "freight": freight_40hq}
+    ]
     
-    # 方案3: 仅用40GP
-    num_40gp = math.floor(total_volume / CONTAINER_SIZES["40GP"])
-    if num_40gp > 0:
-        remaining = total_volume - num_40gp * CONTAINER_SIZES["40GP"]
-        cost = num_40gp * freight_40
-        if remaining > 0.1:
-            cost += remaining * lcl_rate_per_cbm
-            options.append({
-                "name": f"{num_40gp}×40GP + LCL",
-                "description": f"{num_40gp}个40尺柜 + {remaining:.2f}CBM散货",
-                "cost_usd": cost,
-                "details": f"{num_40gp}×${freight_40} + {remaining:.2f}×${lcl_rate_per_cbm}"
-            })
-        else:
-            options.append({
-                "name": f"{num_40gp}×40GP",
-                "description": f"{num_40gp}个40尺柜",
-                "cost_usd": cost,
-                "details": f"{num_40gp}×${freight_40}"
-            })
+    # 计算所需集装箱的最大数量（向上取整）
+    max_20_by_volume = math.ceil(total_volume / 33)
+    max_20_by_weight = math.ceil(total_weight / 25000)
+    max_20 = max(max_20_by_volume, max_20_by_weight)
     
-    # 方案4: 仅用40HQ
-    num_40hq = math.floor(total_volume / CONTAINER_SIZES["40HQ"])
-    if num_40hq > 0:
-        remaining = total_volume - num_40hq * CONTAINER_SIZES["40HQ"]
-        cost = num_40hq * freight_40hq
-        if remaining > 0.1:
-            cost += remaining * lcl_rate_per_cbm
-            options.append({
-                "name": f"{num_40hq}×40HQ + LCL",
-                "description": f"{num_40hq}个40尺高柜 + {remaining:.2f}CBM散货",
-                "cost_usd": cost,
-                "details": f"{num_40hq}×${freight_40hq} + {remaining:.2f}×${lcl_rate_per_cbm}"
-            })
-        else:
-            options.append({
-                "name": f"{num_40hq}×40HQ",
-                "description": f"{num_40hq}个40尺高柜",
-                "cost_usd": cost,
-                "details": f"{num_40hq}×${freight_40hq}"
-            })
+    max_40_by_volume = math.ceil(total_volume / 67)
+    max_40_by_weight = math.ceil(total_weight / 29000)
+    max_40 = max(max_40_by_volume, max_40_by_weight)
+    
+    max_40hq_by_volume = math.ceil(total_volume / 76)
+    max_40hq_by_weight = math.ceil(total_weight / 29000)
+    max_40hq = max(max_40hq_by_volume, max_40hq_by_weight)
+    
+    # 限制搜索范围，避免组合爆炸
+    max_containers = min(max(max_20, max_40, max_40hq), 5)  # 最多搜索到5个柜子
+    
+    # 遍历所有可能的组合
+    fcl_options = []
+    
+    for num_20 in range(max_containers + 1):
+        for num_40 in range(max_containers + 1):
+            for num_40hq in range(max_containers + 1):
+                # 跳过全零组合
+                if num_20 == 0 and num_40 == 0 and num_40hq == 0:
+                    continue
+                
+                # 计算总容量
+                total_container_volume = num_20 * 33 + num_40 * 67 + num_40hq * 76
+                total_container_weight = num_20 * 25000 + num_40 * 29000 + num_40hq * 29000
+                
+                # 检查是否满足体积和重量要求
+                if total_container_volume >= total_volume and total_container_weight >= total_weight:
+                    # 计算集装箱总费用
+                    container_cost = num_20 * freight_20 + num_40 * freight_40 + num_40hq * freight_40hq
+                    
+                    # 计算利用率
+                    volume_utilization = (total_volume / total_container_volume) * 100
+                    weight_utilization = (total_weight / total_container_weight) * 100
+                    
+                    # 构建方案名称
+                    containers_desc = []
+                    if num_20 > 0:
+                        containers_desc.append(f"{num_20}×20'")
+                    if num_40 > 0:
+                        containers_desc.append(f"{num_40}×40'")
+                    if num_40hq > 0:
+                        containers_desc.append(f"{num_40hq}×40'高")
+                    
+                    scheme_name = " + ".join(containers_desc)
+                    
+                    # 计算剩余空间
+                    remaining_volume = total_container_volume - total_volume
+                    remaining_weight = total_container_weight - total_weight
+                    
+                    fcl_options.append({
+                        "name": scheme_name,
+                        "description": f"{scheme_name} - 体积利用率: {volume_utilization:.1f}%, 重量利用率: {weight_utilization:.1f}%",
+                        "type": "fcl",
+                        "containers": {"20'": num_20, "40'": num_40, "40'高": num_40hq},
+                        "cost_usd": container_cost,
+                        "volume_utilization": volume_utilization,
+                        "weight_utilization": weight_utilization,
+                        "remaining_volume": remaining_volume,
+                        "remaining_weight": remaining_weight,
+                        "details": f"总运费: ${container_cost:,.2f} | 剩余体积: {remaining_volume:.1f}CBM | 剩余重量: {remaining_weight:.1f}KG"
+                    })
+    
+    # 去重（基于方案名称和成本）
+    unique_fcl = {}
+    for opt in fcl_options:
+        key = f"{opt['name']}_{opt['cost_usd']:.2f}"
+        if key not in unique_fcl:
+            unique_fcl[key] = opt
+    
+    # 按成本排序
+    fcl_options = list(unique_fcl.values())
+    fcl_options.sort(key=lambda x: x["cost_usd"])
+    
+    # 添加整箱方案到总方案列表
+    options.extend(fcl_options)
+    
+    # 按成本排序所有方案
+    options.sort(key=lambda x: x["cost_usd"])
     
     # 找出最佳方案（最低成本）
     if options:
-        best_index = min(range(len(options)), key=lambda i: options[i]["cost_usd"])
+        best_index = 0  # 排序后第一个就是最便宜的
     else:
         best_index = 0
     
@@ -396,8 +456,10 @@ if 'freight_40' not in st.session_state:
     st.session_state.freight_40 = 1800.0
 if 'freight_40hq' not in st.session_state:
     st.session_state.freight_40hq = 2000.0
-if 'lcl_rate' not in st.session_state:
-    st.session_state.lcl_rate = 50.0
+if 'lcl_rate_cbm' not in st.session_state:
+    st.session_state.lcl_rate_cbm = 50.0   # LCL(M) 按体积费率 (USD/CBM)
+if 'lcl_rate_kg' not in st.session_state:
+    st.session_state.lcl_rate_kg = 2000.0  # LCL(W) 按重量费率 (USD/吨)
 
 # 加载汇率数据
 rate_info = load_rates_from_excel()
@@ -408,7 +470,8 @@ exchange_rates = rate_info["rates"]
 # -------------------- 顶部公司信息及PAD按钮 --------------------
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0; color: white !important;">💰 小信外贸智能折扣助手</h1>
+    <h1>💰 AI价到 - 小微外贸智能折扣助手</h1>
+    <div class="subtitle">智能报价 · 精准计算 · 一键成交</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -493,6 +556,45 @@ with st.sidebar:
     st.markdown("---")
     
     st.markdown('<p class="sidebar-header">🚢 物流信息</p>', unsafe_allow_html=True)
+    
+    # 显示集装箱参数表
+    st.markdown("""
+    <div class="container-table">
+        <table>
+            <tr>
+                <th>类型</th>
+                <th>最大体积(CBM)</th>
+                <th>最大重量(KG)</th>
+            </tr>
+            <tr>
+                <td>LCL(M)</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td>LCL(W)</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td>20'</td>
+                <td>33</td>
+                <td>25000</td>
+            </tr>
+            <tr>
+                <td>40'</td>
+                <td>67</td>
+                <td>29000</td>
+            </tr>
+            <tr>
+                <td>40'高</td>
+                <td>76</td>
+                <td>29000</td>
+            </tr>
+        </table>
+    </div>
+    """, unsafe_allow_html=True)
+    
     col_from, col_to = st.columns(2)
     with col_from:
         departure_port = st.text_input("起运港", value="Shanghai", key="departure_port")
@@ -504,14 +606,19 @@ with st.sidebar:
     
     freight_20 = st.number_input("20'", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input")
     freight_40 = st.number_input("40'", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input")
-    freight_40hq = st.number_input("40'HQ", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input")
-    lcl_rate = st.number_input("LCL散货 (USD/CBM)", value=float(st.session_state.lcl_rate), step=5.0, key="lcl_rate_input")
+    freight_40hq = st.number_input("40'高", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input")
+    
+    st.markdown("**LCL散货费率**")
+    st.caption("LCL运费 = max(体积×LCL(M)单价, 重量×LCL(W)单价)")
+    lcl_rate_cbm = st.number_input("LCL(M) (USD/CBM)", value=float(st.session_state.lcl_rate_cbm), step=5.0, key="lcl_rate_cbm_input")
+    lcl_rate_kg = st.number_input("LCL(W) (USD/吨)", value=float(st.session_state.lcl_rate_kg), step=100.0, key="lcl_rate_kg_input")
     
     if st.button("更新运费设置", key="update_freight"):
         st.session_state.freight_20 = freight_20
         st.session_state.freight_40 = freight_40
         st.session_state.freight_40hq = freight_40hq
-        st.session_state.lcl_rate = lcl_rate
+        st.session_state.lcl_rate_cbm = lcl_rate_cbm
+        st.session_state.lcl_rate_kg = lcl_rate_kg
         st.success("运费设置已更新")
         st.rerun()
     
@@ -688,7 +795,7 @@ st.markdown("### 📋 贸易术语 & 支付方式")
 col_term, col_pay = st.columns(2)
 with col_term:
     term_options = [term["name"] for term in INCOTERMS_2020]
-    selected_term = st.selectbox("贸易术语 (Incoterms 2020)", term_options, index=2, key="selected_term")
+    selected_term = st.selectbox("贸易术语 (Incoterms 2020)", term_options, index=1, key="selected_term")
     selected_term_detail = next((term for term in INCOTERMS_2020 if term["name"] == selected_term), INCOTERMS_2020[0])
     st.caption(f"{selected_term_detail['description'][:100]}...")
     
@@ -715,10 +822,12 @@ current_exchange_rate = exchange_rates[st.session_state.selected_currency]
 
 if calculate_pressed:
     if quantity > 0 and price_per_ct > 0:
+        # 计算总成本
         total_cost_cny = quantity * price_per_ct
         exchange_rate = current_exchange_rate
         total_cost_target = total_cost_cny / exchange_rate
         
+        # 计算箱数、总体积和总重量
         try:
             conversion_parts = unit_conversion.split('/')
             if len(conversion_parts) == 2:
@@ -730,24 +839,30 @@ if calculate_pressed:
             total_packages = math.ceil(quantity / 1000)
         
         total_volume = total_packages * volume_per_pack
+        total_weight = total_packages * gross_weight
         
+        # 计算运输方案
         shipping_options, best_index = calculate_shipping_options(
             total_volume, 
+            total_weight,
             st.session_state.freight_20,
             st.session_state.freight_40,
             st.session_state.freight_40hq,
-            st.session_state.lcl_rate
+            st.session_state.lcl_rate_cbm,
+            st.session_state.lcl_rate_kg
         )
         
         best_option = shipping_options[best_index]
         freight_usd = best_option["cost_usd"]
         freight_cny = freight_usd * exchange_rate
         
+        # 其他费用
         domestic_fee = st.session_state.handling_fee + st.session_state.inspection_fee + st.session_state.document_fee
         bank_charges = 200
         insurance_fee = total_cost_cny * (st.session_state.insurance_rate / 100)
         tax_refund = total_cost_cny * (tax_rate / 100)
         
+        # 对外报价
         quoted_price_target = total_cost_target * (1 + profit_margin/100)
         quoted_price_cny = quoted_price_target * exchange_rate
         
@@ -765,6 +880,7 @@ if calculate_pressed:
             "预期盈亏率": 0,
             "总箱数": total_packages,
             "总体积": total_volume,
+            "总重量": total_weight,
             "shipping_options": shipping_options,
             "best_shipping_index": best_index,
             "selected_shipping": best_option["name"]
@@ -777,17 +893,33 @@ if calculate_pressed:
     else:
         st.warning("请填写商品数量和单价")
 
+# 显示预算表
 if st.session_state.budget:
     b = st.session_state.budget
     
+    # 显示运输方案对比
     with st.expander("🚢 查看运输方案对比", expanded=True):
+        st.markdown("#### 所有运输方案（按成本排序）")
         for i, option in enumerate(b.get("shipping_options", [])):
             if i == b.get("best_shipping_index", 0):
-                st.markdown(f"**✅ 最佳方案: {option['name']}** - ${option['cost_usd']:,.2f}")
-                st.markdown(f"*{option['description']}*")
+                st.markdown(f"""
+                <div class="shipping-option best-option">
+                    <strong>✅ 最佳方案 #{i+1}: {option['name']}</strong><br>
+                    {option['description']}<br>
+                    运费: ${option['cost_usd']:,.2f} | ￥{option['cost_usd'] * current_exchange_rate:,.2f}<br>
+                    <small>{option['details']}</small>
+                </div>
+                """, unsafe_allow_html=True)
             else:
-                st.markdown(f"**{option['name']}** - ${option['cost_usd']:,.2f}")
+                st.markdown(f"""
+                <div class="shipping-option">
+                    <strong>方案 #{i+1}: {option['name']}</strong><br>
+                    {option['description']}<br>
+                    运费: ${option['cost_usd']:,.2f} | ￥{option['cost_usd'] * current_exchange_rate:,.2f}
+                </div>
+                """, unsafe_allow_html=True)
     
+    # 显示成本明细
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         st.markdown("**📥 成本项**")
@@ -800,14 +932,21 @@ if st.session_state.budget:
     with col_b2:
         st.markdown("**📤 收入与退税**")
         st.metric("出口退税", f"￥{b['出口退税']:,.2f}")
-        st.markdown("**💰 盈亏分析**")  # 修复：使用 st.markdown 而不是 st.metric
+        st.markdown("**💰 盈亏分析**")
         st.metric("总成本", f"￥{b['总成本']:,.2f}")
         st.metric("对外报价", f"{b['对外报价']:,.2f} {st.session_state.selected_currency}")
         st.metric("预期盈亏额", f"￥{b['预期盈亏额']:,.2f}", delta=f"{b['预期盈亏率']:.1f}%")
         
+        # 新报价单价
         new_price_per_ct_target = b['对外报价'] / quantity if quantity > 0 else 0
         new_price_per_ct_cny = new_price_per_ct_target * current_exchange_rate
         st.metric("新报价单价", f"{new_price_per_ct_target:.2f} {st.session_state.selected_currency}/CT")
+        
+        st.markdown("**📦 货运信息**")
+        st.metric("总箱数", f"{b['总箱数']:,} 箱")
+        st.metric("总体积", f"{b['总体积']:.2f} CBM")
+        st.metric("总重量", f"{b['总重量']:.2f} KG")
+        st.metric("推荐运输方式", b.get("selected_shipping", "未计算"))
 
 st.markdown("---")
 
@@ -831,6 +970,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站")
+
 
 
 
