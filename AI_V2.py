@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import math
-from datetime import datetime, timedelta, timezone
+import subprocess
 import os
+from datetime import datetime, timedelta, timezone
 
 # 页面配置
 st.set_page_config(
@@ -28,25 +29,6 @@ st.markdown("""
         border-radius: 15px;
         color: white;
         margin-bottom: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    .company-name {
-        font-size: 1.5rem;
-        font-weight: bold;
-    }
-    .company-details {
-        font-size: 0.9rem;
-        opacity: 0.9;
-    }
-    .card {
-        background: white;
-        border: 1px solid #E5E9F0;
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-        margin-bottom: 1rem;
     }
     .section-header {
         background-color: #f0f2f6;
@@ -56,11 +38,21 @@ st.markdown("""
         font-weight: bold;
         color: #0A174E;
     }
+    .fetch-button {
+        background-color: #28a745;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
     .status-badge {
         padding: 0.25rem 0.75rem;
         border-radius: 20px;
         font-size: 0.8rem;
         font-weight: bold;
+        display: inline-block;
     }
     .status-success {
         background-color: #d4edda;
@@ -170,7 +162,7 @@ def load_rates_from_excel():
     """从PAD生成的Excel文件加载汇率数据"""
     excel_path = "C:\\ExchangeRates\\rates.xlsx"
     
-    rates = DEFAULT_RATES.copy()  # 先用默认值
+    rates = DEFAULT_RATES.copy()
     rate_info = {
         "rates": rates,
         "publish_time": "未知",
@@ -181,19 +173,16 @@ def load_rates_from_excel():
     
     if os.path.exists(excel_path):
         try:
-            # 读取Excel文件
             df = pd.read_excel(excel_path)
             
-            # 检查文件修改时间
             mod_time = os.path.getmtime(excel_path)
             mod_time_beijing = datetime.fromtimestamp(mod_time) + timedelta(hours=8)
             rate_info["file_time"] = mod_time_beijing.strftime('%Y-%m-%d %H:%M:%S')
             rate_info["file_exists"] = True
             
-            # 遍历每一行，提取汇率
             for index, row in df.iterrows():
-                currency_code = str(row.iloc[0]).strip()  # A列：货币代码
-                rate_value = row.iloc[2]  # C列：汇率
+                currency_code = str(row.iloc[0]).strip()
+                rate_value = row.iloc[2]
                 
                 if currency_code in rates:
                     try:
@@ -201,7 +190,6 @@ def load_rates_from_excel():
                     except:
                         pass
             
-            # 提取牌价时间和抓取时间（从第一行）
             if len(df) > 0:
                 rate_info["publish_time"] = str(df.iloc[0, 3]) if pd.notna(df.iloc[0, 3]) else "未知"
                 rate_info["fetch_time"] = str(df.iloc[0, 4]) if pd.notna(df.iloc[0, 4]) else "未知"
@@ -213,6 +201,81 @@ def load_rates_from_excel():
     
     return rate_info
 
+# 从客户数据Excel加载的函数
+def load_customer_data_from_excel():
+    """从PAD抓取的客户数据Excel加载"""
+    excel_path = "C:\\PAD_Data\\customers.xlsx"
+    
+    if os.path.exists(excel_path):
+        try:
+            df = pd.read_excel(excel_path)
+            if len(df) > 0:
+                # 取最新一条记录
+                latest = df.iloc[-1]
+                return {
+                    "success": True,
+                    "data": {
+                        "customer_name": str(latest.iloc[0]) if pd.notna(latest.iloc[0]) else "",
+                        "customer_rep": str(latest.iloc[1]) if pd.notna(latest.iloc[1]) else "",
+                        "customer_country": str(latest.iloc[2]) if pd.notna(latest.iloc[2]) else "",
+                        "customer_email": str(latest.iloc[3]) if pd.notna(latest.iloc[3]) else "",
+                        "customer_address": str(latest.iloc[4]) if pd.notna(latest.iloc[4]) else "",
+                        "payment_terms": str(latest.iloc[5]) if pd.notna(latest.iloc[5]) else "",
+                        "fetch_time": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else format_beijing_time()
+                    }
+                }
+        except Exception as e:
+            st.error(f"读取客户数据失败: {e}")
+    
+    return {"success": False, "data": None}
+
+# 从商品数据Excel加载的函数
+def load_product_data_from_excel():
+    """从PAD抓取的商品数据Excel加载"""
+    excel_path = "C:\\PAD_Data\\products.xlsx"
+    
+    if os.path.exists(excel_path):
+        try:
+            df = pd.read_excel(excel_path)
+            if len(df) > 0:
+                latest = df.iloc[-1]
+                return {
+                    "success": True,
+                    "data": {
+                        "product_name": str(latest.iloc[0]) if pd.notna(latest.iloc[0]) else "",
+                        "hs_code": str(latest.iloc[1]) if pd.notna(latest.iloc[1]) else "",
+                        "quantity": float(latest.iloc[2]) if pd.notna(latest.iloc[2]) else 0,
+                        "price_per_ct": float(latest.iloc[3]) if pd.notna(latest.iloc[3]) else 0,
+                        "volume_per_pack": float(latest.iloc[4]) if pd.notna(latest.iloc[4]) else 0,
+                        "weight_per_pack": float(latest.iloc[5]) if pd.notna(latest.iloc[5]) else 0,
+                        "description": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else "",
+                        "fetch_time": str(latest.iloc[7]) if len(df.columns) > 7 and pd.notna(latest.iloc[7]) else format_beijing_time()
+                    }
+                }
+        except Exception as e:
+            st.error(f"读取商品数据失败: {e}")
+    
+    return {"success": False, "data": None}
+
+# 启动PAD流程的函数
+def run_pad_flow(flow_name):
+    """调用Power Automate Desktop运行指定流程"""
+    try:
+        # PAD的命令行调用方式（需要根据实际安装路径调整）
+        pad_path = "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.exe"
+        
+        if os.path.exists(pad_path):
+            # 方法1：直接调用PAD控制台
+            result = subprocess.run([pad_path, flow_name], capture_output=True, text=True, timeout=10)
+            return {"success": True, "message": f"已启动PAD流程: {flow_name}"}
+        else:
+            # 方法2：如果没有PAD，模拟成功（用于演示）
+            st.info(f"模拟运行PAD流程: {flow_name}")
+            return {"success": True, "message": f"模拟运行成功"}
+            
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 # 初始化session state
 if 'current_product' not in st.session_state:
     st.session_state.current_product = "蓝宝石 (Sapphires)"
@@ -220,16 +283,16 @@ if 'quote_history' not in st.session_state:
     st.session_state.quote_history = []
 if 'selected_currency' not in st.session_state:
     st.session_state.selected_currency = "USD"
-if 'customer_data_fetched' not in st.session_state:
-    st.session_state.customer_data_fetched = False
-if 'product_data_fetched' not in st.session_state:
-    st.session_state.product_data_fetched = False
+if 'customer_data' not in st.session_state:
+    st.session_state.customer_data = {}
+if 'product_data' not in st.session_state:
+    st.session_state.product_data = {}
 
 # 加载汇率数据
 rate_info = load_rates_from_excel()
 exchange_rates = rate_info["rates"]
 
-# ==================== 公司信息放在最上方 ====================
+# ==================== 顶部区域 ====================
 st.markdown("""
 <div class="main-header">
     <h1 style="margin:0;">💰 AI价到 - 小微外贸智能报价助手</h1>
@@ -247,21 +310,66 @@ with col_company3:
 with col_company4:
     company_website = st.text_input("网站", "www.abctrading.com", key="company_website")
 
+# PAD抓取按钮行
+col_pad1, col_pad2, col_pad3, col_pad4 = st.columns(4)
+with col_pad1:
+    if st.button("🤖 抓取客户信息 (PAD)", use_container_width=True):
+        with st.spinner("正在启动Power Automate Desktop抓取客户信息..."):
+            result = run_pad_flow("FetchCustomerFromAlibaba")
+            if result["success"]:
+                st.success(result["message"])
+                # 模拟等待PAD完成（实际需要监控文件变化）
+                time.sleep(3)
+                # 加载抓取的数据
+                customer_result = load_customer_data_from_excel()
+                if customer_result["success"]:
+                    st.session_state.customer_data = customer_result["data"]
+                    st.rerun()
+            else:
+                st.error(f"启动失败: {result['message']}")
+
+with col_pad2:
+    if st.button("📦 抓取商品信息 (PAD)", use_container_width=True):
+        with st.spinner("正在启动Power Automate Desktop抓取商品信息..."):
+            result = run_pad_flow("FetchProductFromMarket")
+            if result["success"]:
+                st.success(result["message"])
+                time.sleep(3)
+                product_result = load_product_data_from_excel()
+                if product_result["success"]:
+                    st.session_state.product_data = product_result["data"]
+                    st.session_state.current_product = "自定义商品"
+                    st.rerun()
+            else:
+                st.error(f"启动失败: {result['message']}")
+
+with col_pad3:
+    if st.button("📊 刷新汇率 (PAD)", use_container_width=True):
+        with st.spinner("正在启动Power Automate Desktop更新汇率..."):
+            result = run_pad_flow("FetchBOERates")
+            if result["success"]:
+                st.success(result["message"])
+                time.sleep(2)
+                st.rerun()
+            else:
+                st.error(f"启动失败: {result['message']}")
+
+with col_pad4:
+    st.markdown(f"<div style='text-align: center; padding: 0.5rem; background-color: #e9ecef; border-radius: 5px;'>🕒 {format_beijing_time()}</div>", unsafe_allow_html=True)
+
 # 汇率状态行
 col_rate_status1, col_rate_status2, col_rate_status3, col_rate_status4 = st.columns(4)
 with col_rate_status1:
     if rate_info["file_exists"]:
-        st.markdown("✅ <span class='status-badge status-success'>PAD数据源已连接</span>", unsafe_allow_html=True)
+        st.markdown("✅ <span class='status-badge status-success'>PAD汇率数据已连接</span>", unsafe_allow_html=True)
     else:
         st.markdown("⚠️ <span class='status-badge status-warning'>使用默认汇率</span>", unsafe_allow_html=True)
 with col_rate_status2:
-    st.markdown(f"🕒 **当前时间:** {format_beijing_time()}")
+    st.markdown(f"📊 **牌价时间:** {rate_info['publish_time']}")
 with col_rate_status3:
-    if rate_info["publish_time"] != "未知":
-        st.markdown(f"📊 **牌价时间:** {rate_info['publish_time']}")
+    st.markdown(f"🔄 **抓取时间:** {rate_info['fetch_time']}")
 with col_rate_status4:
-    if rate_info["fetch_time"] != "未知":
-        st.markdown(f"🔄 **抓取时间:** {rate_info['fetch_time']}")
+    st.markdown(f"💱 **当前货币:** {st.session_state.selected_currency}")
 
 st.markdown("---")
 
@@ -269,24 +377,17 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("### ⚙️ 系统设置")
     
-    # 汇率设置（从Excel读取）
+    # 汇率设置
     with st.expander("💱 汇率设置（中国银行牌价）", expanded=True):
-        # 选择报价货币
         available_currencies = list(exchange_rates.keys())
         target_currency = st.selectbox("报价货币", available_currencies, 
                                       index=available_currencies.index(st.session_state.selected_currency) 
                                       if st.session_state.selected_currency in available_currencies else 0)
         st.session_state.selected_currency = target_currency
         
-        # 显示当前汇率
         current_rate = exchange_rates[target_currency]
         st.metric(f"1 {target_currency} = ", f"{current_rate:.4f} CNY")
         
-        # 手动刷新按钮
-        if st.button("🔄 手动刷新汇率", use_container_width=True):
-            st.rerun()
-        
-        # 显示所有汇率
         with st.expander("查看所有汇率"):
             for currency, rate in exchange_rates.items():
                 st.text(f"{currency}: {rate:.4f}")
@@ -297,8 +398,6 @@ with st.sidebar:
         tax_rate = st.slider("出口退税率 (%)", min_value=0, max_value=17, value=13, step=1)
         incoterms = st.selectbox("贸易术语", ["FOB", "CIF", "CFR", "EXW", "DDP"])
         
-        # 附加费用
-        st.markdown("**附加费用 (CNY)**")
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             handling_fee = st.number_input("操作费", value=100, step=10)
@@ -306,22 +405,6 @@ with st.sidebar:
         with col_s2:
             document_fee = st.number_input("文件费", value=300, step=10)
             insurance_rate = st.number_input("保险费率 (%)", value=0.3, step=0.1, format="%.1f")
-    
-    # 快速操作
-    st.markdown("---")
-    st.markdown("### 🚀 快速操作")
-    
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("📋 新建报价", use_container_width=True):
-            st.session_state.current_product = "蓝宝石 (Sapphires)"
-            st.session_state.customer_data_fetched = False
-            st.session_state.product_data_fetched = False
-            st.success("已创建新报价！")
-    
-    with col_btn2:
-        if st.button("💾 保存模板", use_container_width=True):
-            st.success("模板保存成功！")
     
     # 报价历史
     with st.expander("📜 报价历史", expanded=False):
@@ -332,32 +415,27 @@ with st.sidebar:
                 st.markdown("---")
         else:
             st.info("暂无报价历史")
-        
-        if st.button("清空历史", use_container_width=True):
-            st.session_state.quote_history = []
-            st.rerun()
     
     # PAD使用说明
-    with st.expander("📖 PAD使用说明", expanded=False):
+    with st.expander("📖 PAD流程说明", expanded=False):
         st.markdown("""
-        **Power Automate Desktop 设置：**
+        **Power Automate Desktop 流程：**
         
-        1. **运行PAD流程**：每天9:00和14:00自动运行
-        2. **手动运行**：在PAD中点击"运行"
-        3. **数据文件**：`C:\\ExchangeRates\\rates.xlsx`
+        1. **FetchCustomerFromAlibaba**
+           - 从阿里巴巴询价页抓取客户信息
+           - URL: `http://gjmystu.dianyuesoft.com/#/Alibaba/Inquiry/Detail?id=...`
+           - 输出: `C:\\PAD_Data\\customers.xlsx`
         
-        **Excel文件格式：**
-        - A列：货币代码 (USD, EUR, GBP, JPY, HKD)
-        - B列：货币名称
-        - C列：汇率 (1外币=？CNY)
-        - D列：中国银行牌价时间
-        - E列：PAD抓取时间
+        2. **FetchProductFromMarket**
+           - 从国内采购市场抓取商品信息
+           - URL: `http://gjmystu.dianyuesoft.com/#/Practical/Purchase/market`
+           - 输出: `C:\\PAD_Data\\products.xlsx`
+        
+        3. **FetchBOERates**
+           - 从中国银行抓取汇率
+           - URL: `https://www.boc.cn/sourcedb/whpj/`
+           - 输出: `C:\\ExchangeRates\\rates.xlsx`
         """)
-    
-    # 版本信息
-    st.markdown("---")
-    st.markdown(f"**版本:** v2.3.0 (PAD集成版)")
-    st.markdown(f"**数据源:** {'PAD实时抓取' if rate_info['file_exists'] else '默认数据'}")
 
 # ==================== 客户信息和商品信息左右并列 ====================
 col_left, col_right = st.columns(2, gap="large")
@@ -370,14 +448,44 @@ with col_left:
     </div>
     """, unsafe_allow_html=True)
     
-    customer = st.text_input("客户名称", "Antonia Continental Commerce Ltd.", key="customer_name_input")
-    rep = st.text_input("客户代表", "Alfredo Mariani", key="customer_rep_input")
-    country = st.selectbox("目的国家", list(country_port_map.keys()), index=0, key="customer_country_input")
+    # 如果session中有抓取的数据，使用它
+    default_customer = st.session_state.customer_data if st.session_state.customer_data else {}
+    
+    customer = st.text_input("客户名称", 
+                            value=default_customer.get("customer_name", "Antonia Continental Commerce Ltd."), 
+                            key="customer_name_input")
+    rep = st.text_input("客户代表", 
+                       value=default_customer.get("customer_rep", "Alfredo Mariani"), 
+                       key="customer_rep_input")
+    
+    country_index = 0
+    if default_customer.get("customer_country"):
+        countries = list(country_port_map.keys())
+        if default_customer["customer_country"] in countries:
+            country_index = countries.index(default_customer["customer_country"])
+    
+    country = st.selectbox("目的国家", list(country_port_map.keys()), 
+                          index=country_index, key="customer_country_input")
     port = country_port_map.get(country, "San Antonio")
     st.text_input("目的港口", value=port, disabled=True, key="customer_port_input")
-    email = st.text_input("邮箱", "16203962@yahoo.com", key="customer_email_input")
-    address = st.text_area("公司地址", "4 Talcahuano Court, Talcahuano, Chile", key="customer_address_input", height=100)
-    payment_terms = st.selectbox("付款方式", ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"], key="payment_terms_input")
+    
+    email = st.text_input("邮箱", 
+                         value=default_customer.get("customer_email", "16203962@yahoo.com"), 
+                         key="customer_email_input")
+    address = st.text_area("公司地址", 
+                          value=default_customer.get("customer_address", "4 Talcahuano Court, Talcahuano, Chile"), 
+                          key="customer_address_input", height=100)
+    
+    payment_options = ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"]
+    payment_index = 0
+    if default_customer.get("payment_terms") in payment_options:
+        payment_index = payment_options.index(default_customer["payment_terms"])
+    
+    payment_terms = st.selectbox("付款方式", payment_options, 
+                                index=payment_index, key="payment_terms_input")
+    
+    if default_customer.get("fetch_time"):
+        st.info(f"📌 PAD抓取时间: {default_customer['fetch_time']}")
 
 # 右侧：商品信息
 with col_right:
@@ -390,7 +498,6 @@ with col_right:
     # 商品快速切换
     st.markdown("**快速选择商品：**")
     
-    # 按类别显示商品
     categories = {}
     for product_name, product_data in product_presets.items():
         category = product_data.get("category", "其他")
@@ -398,7 +505,6 @@ with col_right:
             categories[category] = []
         categories[category].append(product_name)
     
-    # 创建商品选择按钮
     for category, products in categories.items():
         if category != "其他":
             st.markdown(f"**{category}**")
@@ -411,64 +517,92 @@ with col_right:
     
     st.markdown("---")
     
-    # 根据选择的商品加载预设值
-    selected_preset = product_presets[st.session_state.current_product]
+    # 如果session中有抓取的商品数据，使用它
+    default_product = st.session_state.product_data if st.session_state.product_data else {}
     
-    # 商品详细信息
-    if st.session_state.current_product == "自定义商品":
-        product_name = st.text_input("商品名称", "请输入商品名称", key="product_name_custom")
-        hs_code = st.text_input("HS编码", "", key="hs_code_custom")
+    if st.session_state.current_product == "自定义商品" and default_product:
+        product_name = st.text_input("商品名称", 
+                                    value=default_product.get("product_name", "请输入商品名称"), 
+                                    key="product_name_custom")
+        hs_code = st.text_input("HS编码", 
+                               value=default_product.get("hs_code", ""), 
+                               key="hs_code_custom")
     else:
+        selected_preset = product_presets[st.session_state.current_product]
         product_name = st.text_input("商品名称", st.session_state.current_product, disabled=True, key="product_name")
         hs_code = st.text_input("HS编码", selected_preset["hs_code"], key="hs_code")
     
     # 数量和单价
     col_q1, col_q2 = st.columns(2)
     with col_q1:
-        quantity = st.number_input("数量 (克拉)", value=5000, step=100, key="quantity")
+        if st.session_state.current_product == "自定义商品" and default_product.get("quantity"):
+            quantity = st.number_input("数量 (克拉)", 
+                                      value=default_product["quantity"], 
+                                      step=100, key="quantity_custom")
+        else:
+            quantity = st.number_input("数量 (克拉)", value=5000, step=100, key="quantity")
+    
     with col_q2:
         if st.session_state.current_product == "自定义商品":
-            price_per_ct = st.number_input(f"采购单价 (￥/克拉)", value=0.0, step=1.0, key="price_custom")
+            if default_product.get("price_per_ct"):
+                price_per_ct = st.number_input("采购单价 (￥/克拉)", 
+                                              value=default_product["price_per_ct"], 
+                                              step=1.0, key="price_custom")
+            else:
+                price_per_ct = st.number_input("采购单价 (￥/克拉)", value=0.0, step=1.0, key="price_custom")
         else:
-            price_per_ct = st.number_input(f"采购单价 (￥/克拉)", value=selected_preset["price_per_ct"], step=1.0, key="price")
+            price_per_ct = st.number_input("采购单价 (￥/克拉)", 
+                                          value=selected_preset["price_per_ct"], 
+                                          step=1.0, key="price")
     
     # 包装信息
     st.markdown("**包装信息**")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.session_state.current_product == "自定义商品":
-            volume_per_pack = st.number_input("单箱体积 (CBM)", value=0.0, format="%.3f", key="volume_custom")
+            if default_product.get("volume_per_pack"):
+                volume_per_pack = st.number_input("单箱体积 (CBM)", 
+                                                 value=default_product["volume_per_pack"], 
+                                                 format="%.3f", key="volume_custom")
+            else:
+                volume_per_pack = st.number_input("单箱体积 (CBM)", value=0.0, format="%.3f", key="volume_custom")
         else:
-            volume_per_pack = st.number_input("单箱体积 (CBM)", value=selected_preset["volume_per_pack"], format="%.3f", key="volume")
+            volume_per_pack = st.number_input("单箱体积 (CBM)", 
+                                             value=selected_preset["volume_per_pack"], 
+                                             format="%.3f", key="volume")
+    
     with col_p2:
         if st.session_state.current_product == "自定义商品":
-            weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.0, format="%.2f", key="weight_custom")
+            if default_product.get("weight_per_pack"):
+                weight_per_pack = st.number_input("单箱毛重 (KG)", 
+                                                 value=default_product["weight_per_pack"], 
+                                                 format="%.2f", key="weight_custom")
+            else:
+                weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.0, format="%.2f", key="weight_custom")
         else:
-            weight_per_pack = st.number_input("单箱毛重 (KG)", value=selected_preset["weight_per_pack"], format="%.2f", key="weight")
+            weight_per_pack = st.number_input("单箱毛重 (KG)", 
+                                             value=selected_preset["weight_per_pack"], 
+                                             format="%.2f", key="weight")
     
     # 显示商品描述
     if st.session_state.current_product != "自定义商品":
         st.info(f"📝 {selected_preset['description']}")
+    elif default_product.get("description"):
+        st.info(f"📝 {default_product['description']}")
     
-    # 添加自定义商品按钮
-    if st.session_state.current_product != "自定义商品":
-        if st.button("➕ 添加新商品预设", use_container_width=True):
-            st.session_state.current_product = "自定义商品"
-            st.rerun()
+    if default_product.get("fetch_time"):
+        st.info(f"📌 PAD抓取时间: {default_product['fetch_time']}")
 
 # ==================== 计算结果区域 ====================
 st.markdown("---")
 st.markdown("### 📊 报价计算结果")
 
-# 计算按钮和结果
 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
 with col_btn1:
     if st.button("开始计算", type="primary", use_container_width=True):
-        # 计算报价
         total_cost_cny = quantity * price_per_ct
         total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency]
         
-        # 保存到历史
         quote_record = {
             "date": format_beijing_time(),
             "product": product_name,
@@ -522,14 +656,15 @@ with col_detail4:
 
 st.markdown("---")
 
-# 底部版权信息
+# 底部版权
 col_footer1, col_footer2, col_footer3 = st.columns(3)
 with col_footer1:
     st.markdown(f"© 2026 {company_name}")
 with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
-    st.markdown("汇率数据: Power Automate Desktop 抓取自中国银行")
+    st.markdown("PAD数据源: 阿里巴巴询价页 / 国内采购市场 / 中国银行")
+
 
 
 
