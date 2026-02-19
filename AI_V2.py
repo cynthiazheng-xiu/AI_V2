@@ -20,7 +20,25 @@ st.markdown("""
         padding: 1.5rem 2rem;
         border-radius: 20px;
         color: white;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
+    }
+    .company-info {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 1rem 2rem;
+        border-radius: 15px;
+        color: white;
+        margin-bottom: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .company-name {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    .company-details {
+        font-size: 0.9rem;
+        opacity: 0.9;
     }
     .card {
         background: white;
@@ -36,6 +54,21 @@ st.markdown("""
         border-radius: 8px;
         margin-bottom: 1rem;
         font-weight: bold;
+        color: #0A174E;
+    }
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .status-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .status-warning {
+        background-color: #fff3cd;
+        color: #856404;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -196,27 +229,48 @@ if 'product_data_fetched' not in st.session_state:
 rate_info = load_rates_from_excel()
 exchange_rates = rate_info["rates"]
 
+# ==================== 公司信息放在最上方 ====================
+st.markdown("""
+<div class="main-header">
+    <h1 style="margin:0;">💰 AI价到 - 小微外贸智能报价助手</h1>
+</div>
+""", unsafe_allow_html=True)
+
+# 公司信息行
+col_company1, col_company2, col_company3, col_company4 = st.columns(4)
+with col_company1:
+    company_name = st.text_input("公司名称", "ABC International Trading CO. Ltd", key="company_name")
+with col_company2:
+    company_phone = st.text_input("联系电话", "+86 21 1234 5678", key="company_phone")
+with col_company3:
+    company_email = st.text_input("联系邮箱", "info@abctrading.com", key="company_email")
+with col_company4:
+    company_website = st.text_input("网站", "www.abctrading.com", key="company_website")
+
+# 汇率状态行
+col_rate_status1, col_rate_status2, col_rate_status3, col_rate_status4 = st.columns(4)
+with col_rate_status1:
+    if rate_info["file_exists"]:
+        st.markdown("✅ <span class='status-badge status-success'>PAD数据源已连接</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("⚠️ <span class='status-badge status-warning'>使用默认汇率</span>", unsafe_allow_html=True)
+with col_rate_status2:
+    st.markdown(f"🕒 **当前时间:** {format_beijing_time()}")
+with col_rate_status3:
+    if rate_info["publish_time"] != "未知":
+        st.markdown(f"📊 **牌价时间:** {rate_info['publish_time']}")
+with col_rate_status4:
+    if rate_info["fetch_time"] != "未知":
+        st.markdown(f"🔄 **抓取时间:** {rate_info['fetch_time']}")
+
+st.markdown("---")
+
 # ==================== 侧边栏 ====================
 with st.sidebar:
     st.markdown("### ⚙️ 系统设置")
     
-    # 公司信息
-    with st.expander("🏢 公司信息", expanded=True):
-        company_name = st.text_input("公司名称", "ABC International Trading CO. Ltd")
-        company_phone = st.text_input("联系电话", "+86 21 1234 5678")
-        company_email = st.text_input("联系邮箱", "info@abctrading.com")
-        company_website = st.text_input("网站", "www.abctrading.com")
-    
     # 汇率设置（从Excel读取）
     with st.expander("💱 汇率设置（中国银行牌价）", expanded=True):
-        # 显示数据源状态
-        if rate_info["file_exists"]:
-            st.success(f"✅ 已连接PAD数据源")
-            st.info(f"📁 文件更新时间: {rate_info['file_time']}")
-        else:
-            st.warning("⚠️ 使用默认汇率数据\n请运行PAD流程生成汇率文件")
-            st.info("📁 期望路径: C:\\ExchangeRates\\rates.xlsx")
-        
         # 选择报价货币
         available_currencies = list(exchange_rates.keys())
         target_currency = st.selectbox("报价货币", available_currencies, 
@@ -226,16 +280,7 @@ with st.sidebar:
         
         # 显示当前汇率
         current_rate = exchange_rates[target_currency]
-        
-        # 显示汇率详细信息
-        st.markdown("---")
-        st.markdown("**当前汇率信息**")
-        st.markdown(f"💰 **1 {target_currency}** = **{current_rate:.4f} CNY**")
-        
-        if rate_info["publish_time"] != "未知":
-            st.markdown(f"📅 **中国银行牌价时间:** {rate_info['publish_time']}")
-        if rate_info["fetch_time"] != "未知":
-            st.markdown(f"🔄 **PAD抓取时间:** {rate_info['fetch_time']}")
+        st.metric(f"1 {target_currency} = ", f"{current_rate:.4f} CNY")
         
         # 手动刷新按钮
         if st.button("🔄 手动刷新汇率", use_container_width=True):
@@ -292,45 +337,27 @@ with st.sidebar:
             st.session_state.quote_history = []
             st.rerun()
     
-    # 帮助信息
-    st.markdown("---")
-    with st.expander("❓ 使用帮助", expanded=False):
+    # PAD使用说明
+    with st.expander("📖 PAD使用说明", expanded=False):
         st.markdown("""
-        **Power Automate Desktop 集成说明：**
+        **Power Automate Desktop 设置：**
         
         1. **运行PAD流程**：每天9:00和14:00自动运行
         2. **手动运行**：在PAD中点击"运行"
-        3. **数据文件**：C:\\ExchangeRates\\rates.xlsx
-        4. **汇率时效**：显示中国银行实时牌价
+        3. **数据文件**：`C:\\ExchangeRates\\rates.xlsx`
         
-        **报价操作：**
-        1. 填写客户信息
-        2. 选择商品
-        3. 调整利润率
-        4. 点击"开始计算"
+        **Excel文件格式：**
+        - A列：货币代码 (USD, EUR, GBP, JPY, HKD)
+        - B列：货币名称
+        - C列：汇率 (1外币=？CNY)
+        - D列：中国银行牌价时间
+        - E列：PAD抓取时间
         """)
     
-    # 系统信息
+    # 版本信息
     st.markdown("---")
-    st.markdown(f"**当前时间:** {format_beijing_time()} (北京时间)")
-    st.markdown(f"**版本:** v2.2.0 (PAD集成版)")
+    st.markdown(f"**版本:** v2.3.0 (PAD集成版)")
     st.markdown(f"**数据源:** {'PAD实时抓取' if rate_info['file_exists'] else '默认数据'}")
-
-# ==================== 主界面 ====================
-
-# 头部
-st.markdown("""
-<div class="main-header">
-    <h1 style="margin:0;">💰 AI价到 - 小微外贸智能报价助手</h1>
-    <p style="margin:0.5rem 0 0 0;">{}</p>
-</div>
-""".format(company_name), unsafe_allow_html=True)
-
-# 显示汇率状态
-if rate_info["file_exists"]:
-    st.success(f"✅ 当前使用中国银行实时汇率 | 数据时间: {rate_info['publish_time']} | PAD抓取: {rate_info['fetch_time']}")
-else:
-    st.warning("⚠️ 使用默认汇率数据，请运行Power Automate Desktop流程获取实时汇率")
 
 # ==================== 客户信息和商品信息左右并列 ====================
 col_left, col_right = st.columns(2, gap="large")
@@ -343,14 +370,14 @@ with col_left:
     </div>
     """, unsafe_allow_html=True)
     
-    customer = st.text_input("客户名称", "Antonia Continental Commerce Ltd.", key="customer_name")
-    rep = st.text_input("客户代表", "Alfredo Mariani", key="customer_rep")
-    country = st.selectbox("目的国家", list(country_port_map.keys()), index=0, key="customer_country")
+    customer = st.text_input("客户名称", "Antonia Continental Commerce Ltd.", key="customer_name_input")
+    rep = st.text_input("客户代表", "Alfredo Mariani", key="customer_rep_input")
+    country = st.selectbox("目的国家", list(country_port_map.keys()), index=0, key="customer_country_input")
     port = country_port_map.get(country, "San Antonio")
-    st.text_input("目的港口", value=port, disabled=True, key="customer_port")
-    email = st.text_input("邮箱", "16203962@yahoo.com", key="customer_email")
-    address = st.text_area("公司地址", "4 Talcahuano Court, Talcahuano, Chile", key="customer_address", height=100)
-    payment_terms = st.selectbox("付款方式", ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"], key="payment_terms")
+    st.text_input("目的港口", value=port, disabled=True, key="customer_port_input")
+    email = st.text_input("邮箱", "16203962@yahoo.com", key="customer_email_input")
+    address = st.text_area("公司地址", "4 Talcahuano Court, Talcahuano, Chile", key="customer_address_input", height=100)
+    payment_terms = st.selectbox("付款方式", ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"], key="payment_terms_input")
 
 # 右侧：商品信息
 with col_right:
@@ -375,13 +402,12 @@ with col_right:
     for category, products in categories.items():
         if category != "其他":
             st.markdown(f"**{category}**")
-            for i in range(0, len(products), 4):
-                cols = st.columns(min(4, len(products) - i))
-                for j, product_name in enumerate(products[i:i+4]):
-                    with cols[j]:
-                        if st.button(product_name.split()[0], key=f"btn_{product_name}_{i}_{j}", use_container_width=True):
-                            st.session_state.current_product = product_name
-                            st.rerun()
+            cols = st.columns(min(4, len(products)))
+            for i, product_name in enumerate(products[:4]):
+                with cols[i]:
+                    if st.button(product_name.split()[0], key=f"btn_{product_name}", use_container_width=True):
+                        st.session_state.current_product = product_name
+                        st.rerun()
     
     st.markdown("---")
     
@@ -495,7 +521,16 @@ with col_detail4:
     st.info(f"**总毛重:** {total_weight:.2f} KG")
 
 st.markdown("---")
-st.markdown(f"© 2026 {company_name} | 技术支持: AI价到团队 | 汇率数据: Power Automate Desktop 抓取自中国银行")
+
+# 底部版权信息
+col_footer1, col_footer2, col_footer3 = st.columns(3)
+with col_footer1:
+    st.markdown(f"© 2026 {company_name}")
+with col_footer2:
+    st.markdown("技术支持: AI价到团队")
+with col_footer3:
+    st.markdown("汇率数据: Power Automate Desktop 抓取自中国银行")
+
 
 
 
