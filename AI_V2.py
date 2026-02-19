@@ -1,4 +1,4 @@
-# app.py - AI价到 - 小微外贸智能报价助手 (完整版)
+# app.py - AI价到 - 小微外贸智能报价助手 (表格版)
 
 import streamlit as st
 import pandas as pd
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 # -------------------- 页面配置 - 必须放在最前面 --------------------
 st.set_page_config(
-    page_title="AI价到 - 小微外贸智能折扣助手",
+    page_title="AI价到 - 小微外贸智能出口报价助手",
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -120,6 +120,74 @@ st.markdown("""
         border-radius: 5px;
         margin-bottom: 0.5rem;
         border-left: 3px solid #856404;
+    }
+    .freight-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+    .freight-table th {
+        background-color: #0A174E;
+        color: white;
+        padding: 0.5rem;
+        text-align: center;
+    }
+    .freight-table td {
+        padding: 0.5rem;
+        text-align: center;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .freight-table tr:nth-child(even) {
+        background-color: #f8f9fa;
+    }
+    .highlight-price {
+        background-color: #FFD700;
+        color: #0A174E;
+        font-weight: bold;
+        padding: 0.2rem 0.5rem;
+        border-radius: 5px;
+        font-size: 1.2rem;
+    }
+    .cargo-info-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+        background-color: #f0f2f6;
+    }
+    .cargo-info-table th {
+        background-color: #1D2B5E;
+        color: white;
+        padding: 0.5rem;
+        text-align: center;
+    }
+    .cargo-info-table td {
+        padding: 0.5rem;
+        text-align: center;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: bold;
+    }
+    .price-box {
+        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .price-box .label {
+        color: #0A174E;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    .price-box .value {
+        color: #0A174E;
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .price-box .currency {
+        color: #0A174E;
+        font-size: 1.2rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -604,14 +672,48 @@ with st.sidebar:
     
     st.markdown("**集装箱运费估算 (USD)**")
     
-    freight_20 = st.number_input("20'", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input")
-    freight_40 = st.number_input("40'", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input")
-    freight_40hq = st.number_input("40'高", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input")
+    # 创建运费估算表格
+    st.markdown("""
+    <table class="freight-table">
+        <tr>
+            <th>类型</th>
+            <th>运费 (USD)</th>
+        </tr>
+    """, unsafe_allow_html=True)
+    
+    # 使用columns布局来创建可编辑的表格
+    col_f1, col_f2 = st.columns([1, 1])
+    with col_f1:
+        st.markdown("**20'**")
+    with col_f2:
+        freight_20 = st.number_input("", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input", label_visibility="collapsed")
+    
+    col_f3, col_f4 = st.columns([1, 1])
+    with col_f3:
+        st.markdown("**40'**")
+    with col_f4:
+        freight_40 = st.number_input("", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input", label_visibility="collapsed")
+    
+    col_f5, col_f6 = st.columns([1, 1])
+    with col_f5:
+        st.markdown("**40'高**")
+    with col_f6:
+        freight_40hq = st.number_input("", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input", label_visibility="collapsed")
     
     st.markdown("**LCL散货费率**")
     st.caption("LCL运费 = max(体积×LCL(M)单价, 重量×LCL(W)单价)")
-    lcl_rate_cbm = st.number_input("LCL(M) (USD/CBM)", value=float(st.session_state.lcl_rate_cbm), step=5.0, key="lcl_rate_cbm_input")
-    lcl_rate_kg = st.number_input("LCL(W) (USD/吨)", value=float(st.session_state.lcl_rate_kg), step=100.0, key="lcl_rate_kg_input")
+    
+    col_l1, col_l2 = st.columns([1, 1])
+    with col_l1:
+        st.markdown("**LCL(M)** (USD/CBM)")
+    with col_l2:
+        lcl_rate_cbm = st.number_input("", value=float(st.session_state.lcl_rate_cbm), step=5.0, key="lcl_rate_cbm_input", label_visibility="collapsed")
+    
+    col_l3, col_l4 = st.columns([1, 1])
+    with col_l3:
+        st.markdown("**LCL(W)** (USD/吨)")
+    with col_l4:
+        lcl_rate_kg = st.number_input("", value=float(st.session_state.lcl_rate_kg), step=100.0, key="lcl_rate_kg_input", label_visibility="collapsed")
     
     if st.button("更新运费设置", key="update_freight"):
         st.session_state.freight_20 = freight_20
@@ -839,12 +941,13 @@ if calculate_pressed:
             total_packages = math.ceil(quantity / 1000)
         
         total_volume = total_packages * volume_per_pack
-        total_weight = total_packages * gross_weight
+        total_gross_weight = total_packages * gross_weight
+        total_net_weight = total_packages * net_weight
         
         # 计算运输方案
         shipping_options, best_index = calculate_shipping_options(
             total_volume, 
-            total_weight,
+            total_gross_weight,
             st.session_state.freight_20,
             st.session_state.freight_40,
             st.session_state.freight_40hq,
@@ -880,7 +983,8 @@ if calculate_pressed:
             "预期盈亏率": 0,
             "总箱数": total_packages,
             "总体积": total_volume,
-            "总重量": total_weight,
+            "总毛重": total_gross_weight,
+            "总净重": total_net_weight,
             "shipping_options": shipping_options,
             "best_shipping_index": best_index,
             "selected_shipping": best_option["name"]
@@ -896,6 +1000,25 @@ if calculate_pressed:
 # 显示预算表
 if st.session_state.budget:
     b = st.session_state.budget
+    
+    # 显示货运信息表格
+    st.markdown("#### 📦 整批货物信息")
+    st.markdown(f"""
+    <table class="cargo-info-table">
+        <tr>
+            <th>总箱数</th>
+            <th>总体积 (CBM)</th>
+            <th>总毛重 (KG)</th>
+            <th>总净重 (KG)</th>
+        </tr>
+        <tr>
+            <td>{b['总箱数']:,} 箱</td>
+            <td>{b['总体积']:.2f}</td>
+            <td>{b['总毛重']:.2f}</td>
+            <td>{b['总净重']:.2f}</td>
+        </tr>
+    </table>
+    """, unsafe_allow_html=True)
     
     # 显示运输方案对比
     with st.expander("🚢 查看运输方案对比", expanded=True):
@@ -934,19 +1057,29 @@ if st.session_state.budget:
         st.metric("出口退税", f"￥{b['出口退税']:,.2f}")
         st.markdown("**💰 盈亏分析**")
         st.metric("总成本", f"￥{b['总成本']:,.2f}")
-        st.metric("对外报价", f"{b['对外报价']:,.2f} {st.session_state.selected_currency}")
+        
+        # 突出显示报价
+        st.markdown(f"""
+        <div class="price-box">
+            <div class="label">对外报价</div>
+            <div class="value">{b['对外报价']:,.2f} <span class="currency">{st.session_state.selected_currency}</span></div>
+            <div style="color: #0A174E; margin-top: 0.5rem;">≈ ￥{b['对外报价CNY']:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.metric("预期盈亏额", f"￥{b['预期盈亏额']:,.2f}", delta=f"{b['预期盈亏率']:.1f}%")
         
         # 新报价单价
         new_price_per_ct_target = b['对外报价'] / quantity if quantity > 0 else 0
         new_price_per_ct_cny = new_price_per_ct_target * current_exchange_rate
-        st.metric("新报价单价", f"{new_price_per_ct_target:.2f} {st.session_state.selected_currency}/CT")
         
-        st.markdown("**📦 货运信息**")
-        st.metric("总箱数", f"{b['总箱数']:,} 箱")
-        st.metric("总体积", f"{b['总体积']:.2f} CBM")
-        st.metric("总重量", f"{b['总重量']:.2f} KG")
-        st.metric("推荐运输方式", b.get("selected_shipping", "未计算"))
+        st.markdown(f"""
+        <div style="background-color: #e7f3ff; padding: 0.5rem; border-radius: 5px; margin-top: 1rem;">
+            <strong style="color: #0066cc;">新报价单价</strong><br>
+            <span style="font-size: 1.2rem; font-weight: bold;">{new_price_per_ct_target:.2f} {st.session_state.selected_currency}/CT</span><br>
+            <span style="color: #666;">≈ ￥{new_price_per_ct_cny:.2f}/克拉</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -970,6 +1103,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站")
+
 
 
 
