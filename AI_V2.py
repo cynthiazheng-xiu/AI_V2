@@ -1,4 +1,4 @@
-# app.py - AI价到 - 小微外贸智能报价助手 (修复版)
+# app.py - AI价到 - 小微外贸智能报价助手 (修复混合数值类型错误)
 
 import streamlit as st
 import pandas as pd
@@ -636,10 +636,10 @@ with st.sidebar:
     st.markdown("**集装箱运费估算 (USD)**")
     
     # 使用session_state中的值作为默认值，但不要直接赋值给session_state
-    freight_20 = st.number_input("20'", value=st.session_state.freight_20, step=50, key="freight_20_input")
-    freight_40 = st.number_input("40'", value=st.session_state.freight_40, step=50, key="freight_40_input")
-    freight_40hq = st.number_input("40'HQ", value=st.session_state.freight_40hq, step=50, key="freight_40hq_input")
-    lcl_rate = st.number_input("LCL散货 (USD/CBM)", value=st.session_state.lcl_rate, step=5, key="lcl_rate_input")
+    freight_20 = st.number_input("20'", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input")
+    freight_40 = st.number_input("40'", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input")
+    freight_40hq = st.number_input("40'HQ", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input")
+    lcl_rate = st.number_input("LCL散货 (USD/CBM)", value=float(st.session_state.lcl_rate), step=5.0, key="lcl_rate_input")
     
     # 创建一个按钮来更新session_state，而不是直接赋值
     if st.button("更新运费设置", key="update_freight"):
@@ -656,10 +656,10 @@ with st.sidebar:
     if st.button("📡 抓取最新运费 (PAD)", use_container_width=True):
         st.info("模拟抓取中...")
         # 模拟抓取到新数据
-        st.session_state.freight_20 = 1250
-        st.session_state.freight_40 = 1850
-        st.session_state.freight_40hq = 2100
-        st.session_state.lcl_rate = 55
+        st.session_state.freight_20 = 1250.0
+        st.session_state.freight_40 = 1850.0
+        st.session_state.freight_40hq = 2100.0
+        st.session_state.lcl_rate = 55.0
         st.success("运费已更新")
         st.rerun()
 
@@ -740,25 +740,61 @@ with col7:
 with col8:
     sales_unit = st.text_input("销售单位", value=default_product.get("sales_unit", "克拉（CT）"), key="sales_unit")
 
-# 第三行：数量与单价
+# 第三行：数量与单价 - 修复混合数值类型错误
 col9, col10, col11, col12 = st.columns(4)
 with col9:
-    quantity = st.number_input("数量 (克拉)", value=float(default_product.get("quantity", 0)), step=100, min_value=0, key="quantity")
+    # 修复：将step设为1.0（浮点数），确保所有数值类型一致
+    quantity = st.number_input(
+        "数量 (克拉)", 
+        value=float(default_product.get("quantity", 0)), 
+        step=100.0,  # 改为浮点数
+        min_value=0.0,  # 改为浮点数
+        format="%.0f",  # 显示为整数格式
+        key="quantity"
+    )
 with col10:
-    price_per_ct = st.number_input("采购单价 (￥/克拉)", value=float(default_product.get("price_per_ct", 0.0)), step=1.0, min_value=0.0, format="%.2f", key="price")
+    price_per_ct = st.number_input(
+        "采购单价 (￥/克拉)", 
+        value=float(default_product.get("price_per_ct", 0.0)), 
+        step=1.0, 
+        min_value=0.0, 
+        format="%.2f", 
+        key="price"
+    )
 with col11:
     package_unit = st.text_input("包装单位", value=default_product.get("package_unit", "纸箱（CARTON）"), key="package_unit")
 with col12:
     unit_conversion = st.text_input("单位换算", value=default_product.get("unit_conversion", "1000CT/CARTON"), key="unit_conversion")
 
-# 第四行：包装重量/体积
+# 第四行：包装重量/体积 - 修复混合数值类型错误
 col13, col14, col15, col16 = st.columns(4)
 with col13:
-    gross_weight = st.number_input("毛重 (KGS/纸箱)", value=float(default_product.get("gross_weight", 0.70)), format="%.2f", min_value=0.0, key="gross_weight")
+    gross_weight = st.number_input(
+        "毛重 (KGS/纸箱)", 
+        value=float(default_product.get("gross_weight", 0.70)), 
+        format="%.2f", 
+        min_value=0.0, 
+        step=0.1,  # 添加step浮点数
+        key="gross_weight"
+    )
 with col14:
-    net_weight = st.number_input("净重 (KGS/纸箱)", value=float(default_product.get("net_weight", 0.20)), format="%.2f", min_value=0.0, key="net_weight")
+    net_weight = st.number_input(
+        "净重 (KGS/纸箱)", 
+        value=float(default_product.get("net_weight", 0.20)), 
+        format="%.2f", 
+        min_value=0.0, 
+        step=0.1,  # 添加step浮点数
+        key="net_weight"
+    )
 with col15:
-    volume_per_pack = st.number_input("体积 (CBM/纸箱)", value=float(default_product.get("volume_per_pack", 0.0400)), format="%.4f", min_value=0.0, key="volume")
+    volume_per_pack = st.number_input(
+        "体积 (CBM/纸箱)", 
+        value=float(default_product.get("volume_per_pack", 0.0400)), 
+        format="%.4f", 
+        min_value=0.0, 
+        step=0.001,  # 添加step浮点数
+        key="volume"
+    )
 with col16:
     legal_unit = st.text_input("法定单位", value=default_product.get("legal_unit", "克拉（CT）"), key="legal_unit")
 
@@ -806,18 +842,18 @@ with col_term:
     profit_margin = st.slider("利润率 (%)", min_value=5, max_value=100, value=20, step=5, key="profit_margin")
     tax_rate = st.slider("出口退税率 (%)", min_value=0, max_value=17, value=13, step=1, key="tax_rate")
     
-    # 附加费用
+    # 附加费用 - 修复数值类型
     st.markdown("**附加费用 (CNY)**")
     col_fee1, col_fee2 = st.columns(2)
     with col_fee1:
-        handling_fee = st.number_input("操作费", value=st.session_state.handling_fee, step=10, key="handling_fee")
+        handling_fee = st.number_input("操作费", value=float(st.session_state.handling_fee), step=10.0, key="handling_fee")
         st.session_state.handling_fee = handling_fee
-        inspection_fee = st.number_input("商检费", value=st.session_state.inspection_fee, step=10, key="inspection_fee")
+        inspection_fee = st.number_input("商检费", value=float(st.session_state.inspection_fee), step=10.0, key="inspection_fee")
         st.session_state.inspection_fee = inspection_fee
     with col_fee2:
-        document_fee = st.number_input("文件费", value=st.session_state.document_fee, step=10, key="document_fee")
+        document_fee = st.number_input("文件费", value=float(st.session_state.document_fee), step=10.0, key="document_fee")
         st.session_state.document_fee = document_fee
-        insurance_rate = st.number_input("保险费率 (%)", value=st.session_state.insurance_rate, step=0.1, format="%.1f", key="insurance_rate")
+        insurance_rate = st.number_input("保险费率 (%)", value=float(st.session_state.insurance_rate), step=0.1, format="%.1f", key="insurance_rate")
         st.session_state.insurance_rate = insurance_rate
 
 with col_pay:
@@ -1065,6 +1101,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站询价页 / 公司ERP / 中国银行")
+
 
 
 
