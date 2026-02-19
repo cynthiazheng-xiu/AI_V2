@@ -63,6 +63,10 @@ st.markdown("""
         background-color: #fff3cd;
         color: #856404;
     }
+    .empty-field {
+        color: #999;
+        font-style: italic;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -266,11 +270,11 @@ def run_pad_flow(flow_name):
         pad_path = "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.exe"
         
         if os.path.exists(pad_path):
-            # 方法1：直接调用PAD控制台
+            # 直接调用PAD控制台
             result = subprocess.run([pad_path, flow_name], capture_output=True, text=True, timeout=10)
             return {"success": True, "message": f"已启动PAD流程: {flow_name}"}
         else:
-            # 方法2：如果没有PAD，模拟成功（用于演示）
+            # 如果没有PAD，模拟成功（用于演示）
             st.info(f"模拟运行PAD流程: {flow_name}")
             return {"success": True, "message": f"模拟运行成功"}
             
@@ -279,15 +283,19 @@ def run_pad_flow(flow_name):
 
 # 初始化session state
 if 'current_product' not in st.session_state:
-    st.session_state.current_product = "蓝宝石 (Sapphires)"
+    st.session_state.current_product = "蓝宝石 (Sapphires)"  # 保留默认商品选项
 if 'quote_history' not in st.session_state:
     st.session_state.quote_history = []
 if 'selected_currency' not in st.session_state:
     st.session_state.selected_currency = "USD"
 if 'customer_data' not in st.session_state:
-    st.session_state.customer_data = {}
+    st.session_state.customer_data = {}  # 初始为空
 if 'product_data' not in st.session_state:
-    st.session_state.product_data = {}
+    st.session_state.product_data = {}  # 初始为空
+if 'customer_fetched' not in st.session_state:
+    st.session_state.customer_fetched = False
+if 'product_fetched' not in st.session_state:
+    st.session_state.product_fetched = False
 
 # 加载汇率数据
 rate_info = load_rates_from_excel()
@@ -325,7 +333,10 @@ with col_pad1:
                 customer_result = load_customer_data_from_excel()
                 if customer_result["success"]:
                     st.session_state.customer_data = customer_result["data"]
+                    st.session_state.customer_fetched = True
                     st.rerun()
+                else:
+                    st.warning("未找到客户数据文件，请确保PAD流程已正确运行")
             else:
                 st.error(f"启动失败: {result['message']}")
 
@@ -339,8 +350,11 @@ with col_pad2:
                 product_result = load_product_data_from_excel()
                 if product_result["success"]:
                     st.session_state.product_data = product_result["data"]
+                    st.session_state.product_fetched = True
                     st.session_state.current_product = "自定义商品"
                     st.rerun()
+                else:
+                    st.warning("未找到商品数据文件，请确保PAD流程已正确运行")
             else:
                 st.error(f"启动失败: {result['message']}")
 
@@ -449,21 +463,30 @@ with col_left:
     </div>
     """, unsafe_allow_html=True)
     
-    # 如果session中有抓取的数据，使用它
+    # 显示抓取状态
+    if st.session_state.customer_fetched:
+        st.success("✅ 已从PAD抓取客户数据")
+    else:
+        st.info("⏳ 点击上方'抓取客户信息'按钮从阿里巴巴获取客户数据")
+    
+    # 如果session中有抓取的数据，使用它；否则留空
     default_customer = st.session_state.customer_data if st.session_state.customer_data else {}
     
     customer = st.text_input("客户名称", 
-                            value=default_customer.get("customer_name", "Antonia Continental Commerce Ltd."), 
+                            value=default_customer.get("customer_name", ""), 
+                            placeholder="例如: Antonia Continental Commerce Ltd.",
                             key="customer_name_input")
+    
     rep = st.text_input("客户代表", 
-                       value=default_customer.get("customer_rep", "Alfredo Mariani"), 
+                       value=default_customer.get("customer_rep", ""), 
+                       placeholder="例如: Alfredo Mariani",
                        key="customer_rep_input")
     
+    # 国家选择
     country_index = 0
-    if default_customer.get("customer_country"):
+    if default_customer.get("customer_country") and default_customer["customer_country"] in country_port_map:
         countries = list(country_port_map.keys())
-        if default_customer["customer_country"] in countries:
-            country_index = countries.index(default_customer["customer_country"])
+        country_index = countries.index(default_customer["customer_country"])
     
     country = st.selectbox("目的国家", list(country_port_map.keys()), 
                           index=country_index, key="customer_country_input")
@@ -471,10 +494,13 @@ with col_left:
     st.text_input("目的港口", value=port, disabled=True, key="customer_port_input")
     
     email = st.text_input("邮箱", 
-                         value=default_customer.get("customer_email", "16203962@yahoo.com"), 
+                         value=default_customer.get("customer_email", ""), 
+                         placeholder="例如: 16203962@yahoo.com",
                          key="customer_email_input")
+    
     address = st.text_area("公司地址", 
-                          value=default_customer.get("customer_address", "4 Talcahuano Court, Talcahuano, Chile"), 
+                          value=default_customer.get("customer_address", ""), 
+                          placeholder="例如: 4 Talcahuano Court, Talcahuano, Chile",
                           key="customer_address_input", height=100)
     
     payment_options = ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"]
@@ -485,6 +511,7 @@ with col_left:
     payment_terms = st.selectbox("付款方式", payment_options, 
                                 index=payment_index, key="payment_terms_input")
     
+    # 显示抓取时间
     if default_customer.get("fetch_time"):
         st.info(f"📌 PAD抓取时间: {default_customer['fetch_time']}")
 
@@ -496,8 +523,14 @@ with col_right:
     </div>
     """, unsafe_allow_html=True)
     
-    # 商品快速切换
-    st.markdown("**快速选择商品：**")
+    # 显示抓取状态
+    if st.session_state.product_fetched:
+        st.success("✅ 已从PAD抓取商品数据")
+    else:
+        st.info("⏳ 点击上方'抓取商品信息'按钮从采购市场获取商品数据")
+    
+    # 商品快速切换（保留预设商品选项）
+    st.markdown("**快速选择预设商品：**")
     
     categories = {}
     for product_name, product_data in product_presets.items():
@@ -514,6 +547,8 @@ with col_right:
                 with cols[i]:
                     if st.button(product_name.split()[0], key=f"btn_{product_name}", use_container_width=True):
                         st.session_state.current_product = product_name
+                        st.session_state.product_fetched = False  # 切换预设商品时清除抓取状态
+                        st.session_state.product_data = {}  # 清空抓取的数据
                         st.rerun()
     
     st.markdown("---")
@@ -522,16 +557,24 @@ with col_right:
     default_product = st.session_state.product_data if st.session_state.product_data else {}
     
     if st.session_state.current_product == "自定义商品" and default_product:
+        # 显示抓取的商品数据
         product_name = st.text_input("商品名称", 
-                                    value=default_product.get("product_name", "请输入商品名称"), 
+                                    value=default_product.get("product_name", ""), 
+                                    placeholder="例如: 蓝宝石",
                                     key="product_name_custom")
         hs_code = st.text_input("HS编码", 
                                value=default_product.get("hs_code", ""), 
+                               placeholder="例如: 7103910000",
                                key="hs_code_custom")
-    else:
+    elif st.session_state.current_product != "自定义商品":
+        # 显示预设商品
         selected_preset = product_presets[st.session_state.current_product]
         product_name = st.text_input("商品名称", st.session_state.current_product, disabled=True, key="product_name")
         hs_code = st.text_input("HS编码", selected_preset["hs_code"], key="hs_code")
+    else:
+        # 自定义商品但未抓取数据
+        product_name = st.text_input("商品名称", "", placeholder="请输入商品名称", key="product_name_custom")
+        hs_code = st.text_input("HS编码", "", placeholder="例如: 7103910000", key="hs_code_custom")
     
     # 数量和单价
     col_q1, col_q2 = st.columns(2)
@@ -540,8 +583,10 @@ with col_right:
             quantity = st.number_input("数量 (克拉)", 
                                       value=default_product["quantity"], 
                                       step=100, key="quantity_custom")
-        else:
+        elif st.session_state.current_product != "自定义商品":
             quantity = st.number_input("数量 (克拉)", value=5000, step=100, key="quantity")
+        else:
+            quantity = st.number_input("数量 (克拉)", value=0, step=100, key="quantity_custom")
     
     with col_q2:
         if st.session_state.current_product == "自定义商品":
@@ -591,8 +636,17 @@ with col_right:
     elif default_product.get("description"):
         st.info(f"📝 {default_product['description']}")
     
+    # 显示抓取时间
     if default_product.get("fetch_time"):
         st.info(f"📌 PAD抓取时间: {default_product['fetch_time']}")
+    
+    # 添加自定义商品按钮
+    if st.session_state.current_product != "自定义商品":
+        if st.button("➕ 手动输入商品", use_container_width=True):
+            st.session_state.current_product = "自定义商品"
+            st.session_state.product_fetched = False
+            st.session_state.product_data = {}
+            st.rerun()
 
 # ==================== 计算结果区域 ====================
 st.markdown("---")
@@ -601,40 +655,46 @@ st.markdown("### 📊 报价计算结果")
 col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
 with col_btn1:
     if st.button("开始计算", type="primary", use_container_width=True):
-        total_cost_cny = quantity * price_per_ct
-        total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency]
-        
-        quote_record = {
-            "date": format_beijing_time(),
-            "product": product_name,
-            "customer": customer,
-            "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}"
-        }
-        st.session_state.quote_history.append(quote_record)
-        
-        st.success("计算完成！")
-        st.balloons()
+        if quantity > 0 and price_per_ct > 0:
+            total_cost_cny = quantity * price_per_ct
+            total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency]
+            
+            quote_record = {
+                "date": format_beijing_time(),
+                "product": product_name,
+                "customer": customer if customer else "未填写客户",
+                "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}"
+            }
+            st.session_state.quote_history.append(quote_record)
+            
+            st.success("计算完成！")
+            st.balloons()
+        else:
+            st.error("请填写商品数量和单价")
 
 with col_btn2:
     if st.button("📧 发送报价", use_container_width=True):
-        st.info("报价单已准备发送！")
+        if customer and product_name and quantity > 0:
+            st.info("报价单已准备发送！")
+        else:
+            st.warning("请先填写完整的客户和商品信息")
 
 # 显示计算结果
 col_result1, col_result2, col_result3, col_result4 = st.columns(4)
 
 with col_result1:
     total_cost_cny = quantity * price_per_ct
-    st.metric("采购总成本 (CNY)", f"￥{total_cost_cny:,.2f}")
+    st.metric("采购总成本 (CNY)", f"￥{total_cost_cny:,.2f}" if quantity > 0 else "￥0.00")
 
 with col_result2:
-    total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency]
+    total_cost_target = total_cost_cny / exchange_rates[st.session_state.selected_currency] if quantity > 0 else 0
     st.metric(f"采购总成本 ({st.session_state.selected_currency})", 
-              f"{total_cost_target:,.2f} {st.session_state.selected_currency}")
+              f"{total_cost_target:,.2f} {st.session_state.selected_currency}" if quantity > 0 else f"0.00 {st.session_state.selected_currency}")
 
 with col_result3:
-    suggested_price = total_cost_target * (1 + profit_margin/100)
+    suggested_price = total_cost_target * (1 + profit_margin/100) if quantity > 0 else 0
     st.metric(f"建议报价 ({st.session_state.selected_currency})", 
-              f"{suggested_price:,.2f} {st.session_state.selected_currency}",
+              f"{suggested_price:,.2f} {st.session_state.selected_currency}" if quantity > 0 else f"0.00 {st.session_state.selected_currency}",
               delta=f"{profit_margin}% 利润率")
 
 with col_result4:
@@ -642,18 +702,19 @@ with col_result4:
     st.metric("总箱数", f"{total_packages:,} 箱")
 
 # 显示详细商品信息
-st.markdown("### 📦 商品详情")
-col_detail1, col_detail2, col_detail3, col_detail4 = st.columns(4)
-with col_detail1:
-    st.info(f"**HS编码:** {hs_code}")
-with col_detail2:
-    st.info(f"**总箱数:** {total_packages:,} 箱")
-with col_detail3:
-    total_volume = total_packages * volume_per_pack if total_packages > 0 else 0
-    st.info(f"**总体积:** {total_volume:.2f} CBM")
-with col_detail4:
-    total_weight = total_packages * weight_per_pack if total_packages > 0 else 0
-    st.info(f"**总毛重:** {total_weight:.2f} KG")
+if quantity > 0:
+    st.markdown("### 📦 商品详情")
+    col_detail1, col_detail2, col_detail3, col_detail4 = st.columns(4)
+    with col_detail1:
+        st.info(f"**HS编码:** {hs_code}" if hs_code else "**HS编码:** 未填写")
+    with col_detail2:
+        st.info(f"**总箱数:** {total_packages:,} 箱")
+    with col_detail3:
+        total_volume = total_packages * volume_per_pack if total_packages > 0 else 0
+        st.info(f"**总体积:** {total_volume:.2f} CBM")
+    with col_detail4:
+        total_weight = total_packages * weight_per_pack if total_packages > 0 else 0
+        st.info(f"**总毛重:** {total_weight:.2f} KG")
 
 st.markdown("---")
 
@@ -665,6 +726,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴询价页 / 国内采购市场 / 中国银行")
+
 
 
 
