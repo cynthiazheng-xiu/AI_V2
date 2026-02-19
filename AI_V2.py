@@ -1,49 +1,4 @@
-import streamlit as st
-import pandas as pd
-import math
-import subprocess
-import os
-import time
-from datetime import datetime, timedelta, timezone
-
-# 页面配置
-st.set_page_config(
-    page_title="AI价到 - 小微外贸智能报价助手",
-    page_icon="💰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# 自定义CSS样式
-st.markdown("""
-<style>
-    .main-header {
-        background: linear-gradient(135deg, #0A174E 0%, #1D2B5E 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 20px;
-        color: white;
-        margin-bottom: 1rem;
-    }
-    .company-info {
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        padding: 1rem 2rem;
-        border-radius: 15px;
-        color: white;
-        margin-bottom: 1.5rem;
-    }
-    .section-header {
-        background-color: #f0f2f6;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        font-weight: bold;
-        color: #0A174E;
-    }
-    .fetch-button {
-        background-color: #28a745;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 5px;# app.py - AI价到 - 小微外贸智能报价助手 (图片一&二布局版)
+# app.py - AI价到 - 小微外贸智能报价助手 (图片一&二布局版)
 
 import streamlit as st
 import pandas as pd
@@ -65,7 +20,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(135deg, #0A174E 0%, #1D2B5E 100%);
+        background: linear-gradient(135deg, \#0A174E 0%, \#1D2B5E 100%);
         padding: 1.5rem 2rem;
         border-radius: 20px;
         color: white;
@@ -77,7 +32,7 @@ st.markdown("""
         border-radius: 8px;
         margin-bottom: 1rem;
         font-weight: bold;
-        color: #0A174E;
+        color: \#0A174E;
         font-size: 1.2rem;
     }
     .status-badge {
@@ -97,14 +52,14 @@ st.markdown("""
     }
     .term-card {
         background-color: #f8f9fa;
-        border-left: 4px solid #0A174E;
+        border-left: 4px solid \#0A174E;
         padding: 0.5rem 1rem;
         border-radius: 4px;
         margin-bottom: 0.5rem;
     }
     .term-title {
         font-weight: bold;
-        color: #0A174E;
+        color: \#0A174E;
     }
     .budget-table {
         background-color: #f8f9fa;
@@ -150,8 +105,130 @@ DEFAULT_RATES = {
     "HKD": 0.8858, "AUD": 4.9092, "CAD": 5.0734, "CHF": 8.9762, "SGD": 5.4721
 }
 
-# 2020版国际贸易术语完整列表（略，保持原样）
-INCOTERMS_2020 = [...]  # 保持原有内容，此处省略以节省篇幅，实际代码中需完整保留
+# 2020版国际贸易术语完整列表
+INCOTERMS_2020 = [
+    {
+        "code": "EXW",
+        "name": "EXW (工厂交货)",
+        "full_name": "Ex Works",
+        "category": "任一地点",
+        "description": "卖方在其所在地或其他指定地点将货物交给买方处置时即完成交货。卖方不负责装货，也不负责出口清关。卖方承担最小责任，买方负责所有运输、保险和进出口清关。",
+        "responsibility_seller": "在指定地点提供货物",
+        "responsibility_buyer": "所有运输、保险、出口/进口清关、装货",
+        "risk_transfer": "卖方将货物交给买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "FCA",
+        "name": "FCA (货交承运人)",
+        "full_name": "Free Carrier",
+        "category": "主要运费未付",
+        "description": "卖方在指定地点将货物交给买方指定的承运人即完成交货。卖方负责出口清关。如指定地点是卖方所在地，卖方负责装货；如在其他地点，卖方不负责卸货。",
+        "responsibility_seller": "出口清关、将货物交给承运人",
+        "responsibility_buyer": "主运输、保险、进口清关",
+        "risk_transfer": "货物交给承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "FAS",
+        "name": "FAS (船边交货)",
+        "full_name": "Free Alongside Ship",
+        "category": "主要运费未付",
+        "description": "卖方在指定装运港将货物放在船边（例如码头上或驳船上）即完成交货。卖方负责出口清关。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物运至船边",
+        "responsibility_buyer": "装船、主运输、保险、进口清关",
+        "risk_transfer": "货物放在船边时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "FOB",
+        "name": "FOB (船上交货)",
+        "full_name": "Free On Board",
+        "category": "主要运费未付",
+        "description": "卖方在指定装运港将货物装到买方指定的船上即完成交货。卖方负责出口清关。风险和费用在货物装上船时转移。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船",
+        "responsibility_buyer": "主运输、保险、进口清关",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CFR",
+        "name": "CFR (成本加运费)",
+        "full_name": "Cost and Freight",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的港的运费。货物在装运港装上船时风险转移给买方。卖方负责出口清关，但不负责保险。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船、支付至目的港运费",
+        "responsibility_buyer": "保险、进口清关、目的港卸货费",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CIF",
+        "name": "CIF (成本、保险费加运费)",
+        "full_name": "Cost, Insurance and Freight",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的港的运费，并必须购买货物运输保险。货物在装运港装上船时风险转移给买方。卖方负责出口清关。适用于海运或内河水运。",
+        "responsibility_seller": "出口清关、将货物装上船、支付至目的港运费和保险费",
+        "responsibility_buyer": "进口清关、目的港卸货费",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CPT",
+        "name": "CPT (运费付至)",
+        "full_name": "Carriage Paid To",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的地的运费。货物交给第一承运人时风险转移给买方。卖方负责出口清关，但不负责保险。适用于任何运输方式。",
+        "responsibility_seller": "出口清关、将货物交给承运人、支付至目的地运费",
+        "responsibility_buyer": "保险、进口清关、目的地卸货费",
+        "risk_transfer": "货物交给第一承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "CIP",
+        "name": "CIP (运费、保险费付至)",
+        "full_name": "Carriage and Insurance Paid To",
+        "category": "主要运费已付",
+        "description": "卖方支付将货物运至指定目的地的运费，并必须购买货物运输保险（比CIF要求更高保额）。货物交给第一承运人时风险转移给买方。卖方负责出口清关。适用于任何运输方式。",
+        "responsibility_seller": "出口清关、将货物交给承运人、支付至目的地运费和保险费",
+        "responsibility_buyer": "进口清关、目的地卸货费",
+        "risk_transfer": "货物交给第一承运人时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DAP",
+        "name": "DAP (目的地交货)",
+        "full_name": "Delivered At Place",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地，并将货物放在已到达的运输工具上（未卸货）交给买方处置即完成交货。卖方负责出口清关和运输，但不负责卸货和进口清关。",
+        "responsibility_seller": "出口清关、运输至指定目的地",
+        "responsibility_buyer": "卸货、进口清关",
+        "risk_transfer": "货物在目的地交由买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DPU",
+        "name": "DPU (卸货地交货)",
+        "full_name": "Delivered At Place Unloaded",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地并卸货后交给买方处置即完成交货。这是Incoterms 2020中唯一要求卖方卸货的术语。卖方负责出口清关和运输。",
+        "responsibility_seller": "出口清关、运输至指定目的地、卸货",
+        "responsibility_buyer": "进口清关",
+        "risk_transfer": "货物卸下并交由买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "DDP",
+        "name": "DDP (完税后交货)",
+        "full_name": "Delivered Duty Paid",
+        "category": "到达",
+        "description": "卖方将货物运至指定目的地，并完成进口清关后交给买方处置即完成交货。卖方承担所有风险和费用，包括运输、保险、出口和进口关税。卖方承担最大责任。",
+        "responsibility_seller": "所有运输、保险、出口/进口清关、关税支付",
+        "responsibility_buyer": "极少责任，只需在目的地接收货物",
+        "risk_transfer": "货物在目的地交由买方处置时",
+        "transport": "任何运输方式"
+    }
+]
 
 # -------------------- 数据加载函数 --------------------
 def load_rates_from_excel():
@@ -276,6 +353,20 @@ if 'customer_fetched' not in st.session_state:
     st.session_state.customer_fetched = False
 if 'product_fetched' not in st.session_state:
     st.session_state.product_fetched = False
+if 'handling_fee' not in st.session_state:
+    st.session_state.handling_fee = 100
+if 'inspection_fee' not in st.session_state:
+    st.session_state.inspection_fee = 200
+if 'document_fee' not in st.session_state:
+    st.session_state.document_fee = 300
+if 'insurance_rate' not in st.session_state:
+    st.session_state.insurance_rate = 0.3
+if 'freight_20' not in st.session_state:
+    st.session_state.freight_20 = 1200
+if 'freight_40' not in st.session_state:
+    st.session_state.freight_40 = 1800
+if 'freight_40hq' not in st.session_state:
+    st.session_state.freight_40hq = 2000
 
 # 加载汇率数据
 rate_info = load_rates_from_excel()
@@ -384,11 +475,14 @@ with st.sidebar:
     st.markdown("**集装箱运费估算 (USD)**")
     col20, col40, col40hq = st.columns(3)
     with col20:
-        freight_20 = st.number_input("20'", value=1200, step=50, key="freight_20")
+        freight_20 = st.number_input("20'", value=st.session_state.freight_20, step=50, key="freight_20")
+        st.session_state.freight_20 = freight_20
     with col40:
-        freight_40 = st.number_input("40'", value=1800, step=50, key="freight_40")
+        freight_40 = st.number_input("40'", value=st.session_state.freight_40, step=50, key="freight_40")
+        st.session_state.freight_40 = freight_40
     with col40hq:
-        freight_40hq = st.number_input("40'HQ", value=2000, step=50, key="freight_40hq")
+        freight_40hq = st.number_input("40'HQ", value=st.session_state.freight_40hq, step=50, key="freight_40hq")
+        st.session_state.freight_40hq = freight_40hq
     
     st.caption("数据来源: 环球运费网 / PAD抓取")
     
@@ -477,9 +571,9 @@ with col8:
 # 第三行：数量与单价
 col9, col10, col11, col12 = st.columns(4)
 with col9:
-    quantity = st.number_input("数量 (克拉)", value=default_product.get("quantity", 0), step=100, min_value=0, key="quantity")
+    quantity = st.number_input("数量 (克拉)", value=float(default_product.get("quantity", 0)), step=100, min_value=0, key="quantity")
 with col10:
-    price_per_ct = st.number_input("采购单价 (￥/克拉)", value=default_product.get("price_per_ct", 0.0), step=1.0, min_value=0.0, format="%.2f", key="price")
+    price_per_ct = st.number_input("采购单价 (￥/克拉)", value=float(default_product.get("price_per_ct", 0.0)), step=1.0, min_value=0.0, format="%.2f", key="price")
 with col11:
     package_unit = st.text_input("包装单位", value=default_product.get("package_unit", "纸箱（CARTON）"), key="package_unit")
 with col12:
@@ -488,11 +582,11 @@ with col12:
 # 第四行：包装重量/体积
 col13, col14, col15, col16 = st.columns(4)
 with col13:
-    gross_weight = st.number_input("毛重 (KGS/纸箱)", value=default_product.get("gross_weight", 0.70), format="%.2f", min_value=0.0, key="gross_weight")
+    gross_weight = st.number_input("毛重 (KGS/纸箱)", value=float(default_product.get("gross_weight", 0.70)), format="%.2f", min_value=0.0, key="gross_weight")
 with col14:
-    net_weight = st.number_input("净重 (KGS/纸箱)", value=default_product.get("net_weight", 0.20), format="%.2f", min_value=0.0, key="net_weight")
+    net_weight = st.number_input("净重 (KGS/纸箱)", value=float(default_product.get("net_weight", 0.20)), format="%.2f", min_value=0.0, key="net_weight")
 with col15:
-    volume_per_pack = st.number_input("体积 (CBM/纸箱)", value=default_product.get("volume_per_pack", 0.0400), format="%.4f", min_value=0.0, key="volume")
+    volume_per_pack = st.number_input("体积 (CBM/纸箱)", value=float(default_product.get("volume_per_pack", 0.0400)), format="%.4f", min_value=0.0, key="volume")
 with col16:
     legal_unit = st.text_input("法定单位", value=default_product.get("legal_unit", "克拉（CT）"), key="legal_unit")
 
@@ -521,11 +615,11 @@ with col_adv2:
     # 根据体积估算建议数量
     if volume_per_pack > 0:
         suggested_qty_20 = math.floor(28 / volume_per_pack) * 1000  # 假设20GP约28CBM
-        st.metric("20GP建议数量", f"{suggested_qty_20} CT")
+        st.metric("20GP建议数量", f"{suggested_qty_20:,} CT")
 with col_adv3:
     if volume_per_pack > 0:
         suggested_qty_40 = math.floor(58 / volume_per_pack) * 1000  # 40GP约58CBM
-        st.metric("40GP建议数量", f"{suggested_qty_40} CT")
+        st.metric("40GP建议数量", f"{suggested_qty_40:,} CT")
 
 st.markdown("### 📋 贸易术语 & 支付方式")
 col_term, col_pay = st.columns(2)
@@ -536,9 +630,23 @@ with col_term:
     selected_term_detail = next((term for term in INCOTERMS_2020 if term["name"] == selected_term), INCOTERMS_2020[0])
     st.caption(f"{selected_term_detail['description'][:150]}...")
     
-    # 利润率设置（原在侧边栏，现移至此处）
+    # 利润率设置
     profit_margin = st.slider("利润率 (%)", min_value=5, max_value=100, value=20, step=5, key="profit_margin")
     tax_rate = st.slider("出口退税率 (%)", min_value=0, max_value=17, value=13, step=1, key="tax_rate")
+    
+    # 附加费用
+    st.markdown("**附加费用 (CNY)**")
+    col_fee1, col_fee2 = st.columns(2)
+    with col_fee1:
+        handling_fee = st.number_input("操作费", value=st.session_state.handling_fee, step=10, key="handling_fee")
+        st.session_state.handling_fee = handling_fee
+        inspection_fee = st.number_input("商检费", value=st.session_state.inspection_fee, step=10, key="inspection_fee")
+        st.session_state.inspection_fee = inspection_fee
+    with col_fee2:
+        document_fee = st.number_input("文件费", value=st.session_state.document_fee, step=10, key="document_fee")
+        st.session_state.document_fee = document_fee
+        insurance_rate = st.number_input("保险费率 (%)", value=st.session_state.insurance_rate, step=0.1, format="%.1f", key="insurance_rate")
+        st.session_state.insurance_rate = insurance_rate
 
 with col_pay:
     st.markdown("**付款方式**")
@@ -561,7 +669,7 @@ if 'budget' not in st.session_state:
     st.session_state.budget = {}
 
 # 当点击开始报价或输入变化时计算
-if calculate_pressed or st.session_state.get('last_calc', False):
+if calculate_pressed:
     if quantity > 0 and price_per_ct > 0:
         # 基础数据
         total_cost_cny = quantity * price_per_ct
@@ -582,13 +690,13 @@ if calculate_pressed or st.session_state.get('last_calc', False):
         total_volume = total_packages * volume_per_pack
         total_weight = total_packages * gross_weight
         
-        # 国内费用（示例）
-        domestic_fee = handling_fee + inspection_fee + document_fee if 'handling_fee' in st.session_state else 600
+        # 国内费用
+        domestic_fee = handling_fee + inspection_fee + document_fee
+        
         # 银行费用（示例）
         bank_charges = 200  # 可细化
         
         # 海运费（根据选择的集装箱类型估算）
-        # 假设用户选择使用20GP还是40GP，简单按体积匹配
         if total_volume <= 28:
             freight_usd = freight_20
             container_type = "20'"
@@ -599,14 +707,17 @@ if calculate_pressed or st.session_state.get('last_calc', False):
             freight_usd = freight_40hq * math.ceil(total_volume / 68)  # 40HQ约68CBM
             container_type = "40'HQ"
         
-        freight_cny = freight_usd * exchange_rate  # 转换为人民币
+        freight_cny = freight_usd * exchange_rate
         
-        # 保险费（按CIF等需要）
-        insurance_rate_val = insurance_rate if 'insurance_rate' in st.session_state else 0.3
-        insurance_fee = total_cost_cny * (insurance_rate_val / 100)
+        # 保险费
+        insurance_fee = total_cost_cny * (insurance_rate / 100)
         
         # 出口退税收入
         tax_refund = total_cost_cny * (tax_rate / 100)
+        
+        # 对外报价（按目标货币）
+        quoted_price_target = total_cost_target * (1 + profit_margin/100)
+        quoted_price_cny = quoted_price_target * exchange_rate
         
         # 预算表各项
         budget = {
@@ -622,17 +733,21 @@ if calculate_pressed or st.session_state.get('last_calc', False):
             "保险费": insurance_fee,
             "出口退税": tax_refund,
             "总成本": total_cost_cny + domestic_fee + bank_charges + freight_cny + insurance_fee - tax_refund,
-            "对外报价": total_cost_target * (1 + profit_margin/100),
-            "预期盈亏额": (total_cost_target * (1 + profit_margin/100) * exchange_rate) - (total_cost_cny + domestic_fee + bank_charges + freight_cny + insurance_fee - tax_refund),
+            "对外报价": quoted_price_target,
+            "对外报价CNY": quoted_price_cny,
+            "预期盈亏额": quoted_price_cny - (total_cost_cny + domestic_fee + bank_charges + freight_cny + insurance_fee - tax_refund),
             "预期盈亏率": 0,
+            "总箱数": total_packages,
+            "总体积": total_volume,
+            "总毛重": total_weight
         }
         budget["预期盈亏率"] = (budget["预期盈亏额"] / budget["总成本"]) * 100 if budget["总成本"] != 0 else 0
         
         st.session_state.budget = budget
-        st.session_state.last_calc = True
+        st.success("计算完成！")
+        st.balloons()
     else:
         st.warning("请填写商品数量和单价")
-        st.session_state.last_calc = False
 
 # 显示预算表（如果已计算）
 if st.session_state.budget:
@@ -640,13 +755,8 @@ if st.session_state.budget:
     with st.container():
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            st.markdown("**收入项**")
+            st.markdown("**📥 成本项**")
             st.metric("采购成本", f"￥{b['采购成本']:,.2f}")
-            st.metric("运输收入", f"￥{b['运输收入']:,.2f}")
-            st.metric("出口退税", f"￥{b['出口退税']:,.2f}")
-            st.metric("**收入合计**", f"￥{b['采购成本'] + b['运输收入'] + b['出口退税']:,.2f}")
-            
-            st.markdown("**费用项**")
             st.metric("国内费用", f"￥{b['国内费用']:,.2f}")
             st.metric("银行费用", f"￥{b['银行费用']:,.2f}")
             st.metric("海运费", f"￥{b['海运费']:,.2f}")
@@ -655,18 +765,29 @@ if st.session_state.budget:
             st.metric("进口增值税", f"￥{b['进口增值税']:,.2f}")
             st.metric("进口消费税", f"￥{b['进口消费税']:,.2f}")
             st.metric("其他费用", f"￥{b['其他费用']:,.2f}")
-            st.metric("**费用合计**", f"￥{b['国内费用']+b['银行费用']+b['海运费']+b['保险费']+b['进口关税']+b['进口增值税']+b['进口消费税']+b['其他费用']:,.2f}")
+            st.metric("**成本合计**", f"￥{b['国内费用']+b['银行费用']+b['海运费']+b['保险费']+b['进口关税']+b['进口增值税']+b['进口消费税']+b['其他费用']+b['采购成本']:,.2f}")
         
         with col_b2:
-            st.markdown("**盈亏分析**")
+            st.markdown("**📤 收入与退税**")
+            st.metric("出口退税", f"￥{b['出口退税']:,.2f}")
+            st.metric("运输收入", f"￥{b['运输收入']:,.2f}")
+            
+            st.markdown("**💰 盈亏分析**")
             st.metric("总成本 (含税)", f"￥{b['总成本']:,.2f}")
             st.metric(f"对外报价 ({st.session_state.selected_currency})", f"{b['对外报价']:,.2f} {st.session_state.selected_currency}")
+            st.metric("对外报价 (CNY)", f"￥{b['对外报价CNY']:,.2f}")
             st.metric("预期盈亏额", f"￥{b['预期盈亏额']:,.2f}", delta=f"{b['预期盈亏率']:.1f}%")
             
             # 新报价单价（每克拉）
             new_price_per_ct_target = b['对外报价'] / quantity if quantity > 0 else 0
             new_price_per_ct_cny = new_price_per_ct_target * exchange_rate
-            st.metric("新报价单价 (每克拉)", f"{new_price_per_ct_target:.2f} {st.session_state.selected_currency} / ￥{new_price_per_ct_cny:.2f}")
+            st.metric("新报价单价 (每克拉)", f"{new_price_per_ct_target:.2f} {st.session_state.selected_currency}")
+            st.metric("新报价单价 (CNY/克拉)", f"￥{new_price_per_ct_cny:.2f}")
+            
+            st.markdown("**📦 货运信息**")
+            st.metric("总箱数", f"{b['总箱数']:,} 箱")
+            st.metric("总体积", f"{b['总体积']:.2f} CBM")
+            st.metric("总毛重", f"{b['总毛重']:.2f} KG")
             
             st.markdown("**备注**")
             st.caption("进口税费需根据目的国HS编码实际查询，此处为示例。")
@@ -684,6 +805,12 @@ with st.expander("📚 查看 Incoterms 2020 术语详情"):
             <div style="font-style: italic;">{selected_term_detail['full_name']}</div>
         </div>
         """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="term-card">
+            <div class="term-title">🚚 适用运输方式</div>
+            <div>{selected_term_detail['transport']}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with col_t2:
         st.markdown(f"""
         <div class="term-card">
@@ -691,7 +818,43 @@ with st.expander("📚 查看 Incoterms 2020 术语详情"):
             <div>{selected_term_detail['description']}</div>
         </div>
         """, unsafe_allow_html=True)
-    # 可继续显示所有术语列表（略）
+        col_resp1, col_resp2 = st.columns(2)
+        with col_resp1:
+            st.markdown(f"""
+            <div class="term-card">
+                <div class="term-title">👤 卖方责任</div>
+                <div>{selected_term_detail['responsibility_seller']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_resp2:
+            st.markdown(f"""
+            <div class="term-card">
+                <div class="term-title">👥 买方责任</div>
+                <div>{selected_term_detail['responsibility_buyer']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # 显示所有术语快速参考
+    st.markdown("### 所有术语一览")
+    for term in INCOTERMS_2020:
+        st.markdown(f"""
+        <div class="term-card">
+            <div class="term-title">{term['name']}</div>
+            <div class="term-desc">{term['description'][:150]}...</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# -------------------- 报价历史（侧边栏底部） --------------------
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("### 📜 报价历史")
+    if st.session_state.quote_history:
+        for i, quote in enumerate(st.session_state.quote_history[-5:]):
+            st.markdown(f"**{quote['date']}** - {quote['product']}")
+            st.markdown(f"客户: {quote['customer']} | 金额: {quote['amount']}")
+            st.markdown("---")
+    else:
+        st.info("暂无报价历史")
 
 # -------------------- 底部版权 --------------------
 col_footer1, col_footer2, col_footer3 = st.columns(3)
@@ -701,6 +864,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站询价页 / 公司ERP / 中国银行")
+
 
 
 
