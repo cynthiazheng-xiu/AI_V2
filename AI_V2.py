@@ -1,4 +1,4 @@
-# app.py - AI价到 - 小微外贸智能报价助手 (修复session state错误 + 客户信息2列布局)
+# app.py - AI价到 - 小微外贸智能报价助手 (完整修复版)
 
 import streamlit as st
 import pandas as pd
@@ -638,13 +638,13 @@ with st.sidebar:
     
     st.markdown("**集装箱运费估算 (USD)**")
     
-    # 使用session_state中的值作为默认值，但不要直接赋值给session_state
+    # 使用session_state中的值作为默认值
     freight_20 = st.number_input("20'", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input")
     freight_40 = st.number_input("40'", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input")
     freight_40hq = st.number_input("40'HQ", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input")
     lcl_rate = st.number_input("LCL散货 (USD/CBM)", value=float(st.session_state.lcl_rate), step=5.0, key="lcl_rate_input")
     
-    # 创建一个按钮来更新session_state，而不是直接赋值
+    # 创建一个按钮来更新session_state
     if st.button("更新运费设置", key="update_freight"):
         st.session_state.freight_20 = freight_20
         st.session_state.freight_40 = freight_40
@@ -939,11 +939,14 @@ st.markdown("### 📊 出口预算表")
 if 'budget' not in st.session_state:
     st.session_state.budget = {}
 
+# 获取当前汇率
+current_exchange_rate = exchange_rates[st.session_state.selected_currency]
+
 # 当点击开始报价时计算
 if calculate_pressed:
     if quantity > 0 and price_per_ct > 0:
         total_cost_cny = quantity * price_per_ct
-        exchange_rate = exchange_rates[st.session_state.selected_currency]
+        exchange_rate = current_exchange_rate
         total_cost_target = total_cost_cny / exchange_rate
         
         try:
@@ -1063,8 +1066,9 @@ if st.session_state.budget:
             st.metric("对外报价 (CNY)", f"￥{b['对外报价CNY']:,.2f}")
             st.metric("预期盈亏额", f"￥{b['预期盈亏额']:,.2f}", delta=f"{b['预期盈亏率']:.1f}%")
             
+            # 使用当前汇率计算新报价单价
             new_price_per_ct_target = b['对外报价'] / quantity if quantity > 0 else 0
-            new_price_per_ct_cny = new_price_per_ct_target * exchange_rate
+            new_price_per_ct_cny = new_price_per_ct_target * current_exchange_rate
             st.metric("新报价单价 (每克拉)", f"{new_price_per_ct_target:.2f} {st.session_state.selected_currency}")
             st.metric("新报价单价 (CNY/克拉)", f"￥{new_price_per_ct_cny:.2f}")
             
@@ -1148,6 +1152,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站询价页 / 公司ERP / 中国银行")
+
 
 
 
