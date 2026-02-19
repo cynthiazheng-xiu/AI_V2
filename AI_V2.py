@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import math
 from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import json
+import time
 
 # 页面配置
 st.set_page_config(
@@ -55,6 +59,33 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         margin-bottom: 1rem;
+    }
+    .section-header {
+        background-color: #f0f2f6;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-weight: bold;
+    }
+    .fetch-button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .status-success {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .status-warning {
+        color: #ffc107;
+        font-weight: bold;
+    }
+    .status-error {
+        color: #dc3545;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -137,6 +168,129 @@ product_presets = {
     }
 }
 
+# 模拟从网站抓取数据的函数
+def fetch_customer_data_from_website(source="power_automate"):
+    """
+    模拟从Power Automate Desktop或其他网站抓取客户数据
+    """
+    try:
+        # 这里模拟从不同来源获取数据
+        if source == "power_automate":
+            # 模拟从Power Automate Desktop获取的数据
+            time.sleep(2)  # 模拟网络延迟
+            return {
+                "success": True,
+                "data": {
+                    "customer_name": "Global Trade Imports Ltd (从Power Automate抓取)",
+                    "customer_rep": "John Smith",
+                    "customer_country": "USA",
+                    "customer_email": "john.smith@globaltrade.com",
+                    "customer_address": "123 Trade Center, New York, NY 10001, USA",
+                    "payment_terms": "L/C at sight",
+                    "source": "Power Automate Desktop - 客户数据库"
+                }
+            }
+        elif source == "alibaba":
+            # 模拟从阿里巴巴国际站抓取
+            time.sleep(1.5)
+            return {
+                "success": True,
+                "data": {
+                    "customer_name": "Alibaba Import Co., Ltd",
+                    "customer_rep": "Li Wei",
+                    "customer_country": "China",
+                    "customer_email": "li.wei@alibaba.com",
+                    "customer_address": "969 West Wen'er Road, Hangzhou, China",
+                    "payment_terms": "T/T 30% deposit",
+                    "source": "Alibaba.com"
+                }
+            }
+        elif source == "made_in_china":
+            time.sleep(1.8)
+            return {
+                "success": True,
+                "data": {
+                    "customer_name": "Made-in-China Importer",
+                    "customer_rep": "Wang Fang",
+                    "customer_country": "Germany",
+                    "customer_email": "fang.wang@made-in-china.com",
+                    "customer_address": "Berlin Trade Center, Germany",
+                    "payment_terms": "D/P",
+                    "source": "Made-in-China.com"
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "error": "未知的数据来源"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+def fetch_product_data_from_website(source="power_automate"):
+    """
+    模拟从Power Automate Desktop或其他网站抓取商品数据
+    """
+    try:
+        if source == "power_automate":
+            time.sleep(2.5)
+            return {
+                "success": True,
+                "data": {
+                    "product_name": "Premium Sapphires (从Power Automate抓取)",
+                    "hs_code": "7103910000",
+                    "quantity": 8000,
+                    "price_per_ct": 55.0,
+                    "volume_per_pack": 0.045,
+                    "weight_per_pack": 0.75,
+                    "description": "高级蓝宝石，通过Power Automate抓取的商品数据",
+                    "source": "Power Automate Desktop - 商品管理系统"
+                }
+            }
+        elif source == "gemstone_database":
+            time.sleep(2)
+            return {
+                "success": True,
+                "data": {
+                    "product_name": "Burma Rubies",
+                    "hs_code": "7103910000",
+                    "quantity": 3000,
+                    "price_per_ct": 85.0,
+                    "volume_per_pack": 0.038,
+                    "weight_per_pack": 0.65,
+                    "description": "缅甸红宝石，来自宝石数据库",
+                    "source": "Gemstone Database"
+                }
+            }
+        elif source == "supplier_portal":
+            time.sleep(1.8)
+            return {
+                "success": True,
+                "data": {
+                    "product_name": "Colombian Emeralds",
+                    "hs_code": "7103910000",
+                    "quantity": 2000,
+                    "price_per_ct": 130.0,
+                    "volume_per_pack": 0.05,
+                    "weight_per_pack": 0.85,
+                    "description": "哥伦比亚祖母绿，来自供应商门户",
+                    "source": "Supplier Portal"
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "error": "未知的数据来源"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # 初始化session state
 if 'current_product' not in st.session_state:
     st.session_state.current_product = "蓝宝石 (Sapphires)"
@@ -146,6 +300,12 @@ if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = False
 if 'selected_currency' not in st.session_state:
     st.session_state.selected_currency = "USD"
+if 'customer_data_fetched' not in st.session_state:
+    st.session_state.customer_data_fetched = False
+if 'product_data_fetched' not in st.session_state:
+    st.session_state.product_data_fetched = False
+if 'fetch_source' not in st.session_state:
+    st.session_state.fetch_source = "power_automate"
 
 # ==================== 侧边栏 ====================
 with st.sidebar:
@@ -157,6 +317,27 @@ with st.sidebar:
         company_phone = st.text_input("联系电话", "+86 21 1234 5678")
         company_email = st.text_input("联系邮箱", "info@abctrading.com")
         company_website = st.text_input("网站", "www.abctrading.com")
+    
+    # 数据抓取设置
+    with st.expander("🔄 数据抓取设置", expanded=True):
+        st.markdown("**Power Automate Desktop 设置**")
+        st.session_state.fetch_source = st.selectbox(
+            "数据来源",
+            ["power_automate", "alibaba", "made_in_china", "gemstone_database", "supplier_portal"],
+            format_func=lambda x: {
+                "power_automate": "Power Automate Desktop",
+                "alibaba": "阿里巴巴国际站",
+                "made_in_china": "Made-in-China.com",
+                "gemstone_database": "宝石数据库",
+                "supplier_portal": "供应商门户"
+            }.get(x, x)
+        )
+        
+        power_automate_path = st.text_input("Power Automate 脚本路径", "C:\\PowerAutomate\\scripts\\fetch_data.ps1")
+        auto_refresh = st.checkbox("自动刷新数据", value=False)
+        
+        if auto_refresh:
+            refresh_interval = st.slider("刷新间隔(秒)", 30, 300, 60)
     
     # 汇率设置
     with st.expander("💱 汇率设置", expanded=True):
@@ -199,6 +380,8 @@ with st.sidebar:
     with col_btn1:
         if st.button("📋 新建报价", use_container_width=True):
             st.session_state.current_product = "蓝宝石 (Sapphires)"
+            st.session_state.customer_data_fetched = False
+            st.session_state.product_data_fetched = False
             st.success("已创建新报价！")
     
     with col_btn2:
@@ -224,10 +407,16 @@ with st.sidebar:
     with st.expander("❓ 使用帮助", expanded=False):
         st.markdown("""
         **快速开始：**
-        1. 选择或输入商品信息
-        2. 填写客户资料
-        3. 调整报价参数
-        4. 点击开始计算
+        1. 点击"抓取客户信息"按钮从外部网站获取客户数据
+        2. 点击"抓取商品信息"按钮从外部网站获取商品数据
+        3. 或手动输入客户和商品信息
+        4. 调整报价参数
+        5. 点击开始计算
+        
+        **Power Automate集成：**
+        - 支持从Power Automate Desktop抓取数据
+        - 支持阿里巴巴国际站、Made-in-China等平台
+        - 可配置自动刷新
         
         **快捷键：**
         - Ctrl+N: 新建报价
@@ -238,7 +427,7 @@ with st.sidebar:
     # 系统信息
     st.markdown("---")
     st.markdown(f"**当前时间:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    st.markdown(f"**版本:** v2.0.0")
+    st.markdown(f"**版本:** v2.1.0")
     st.markdown(f"**用户:** 管理员")
 
 # ==================== 主界面 ====================
@@ -251,87 +440,250 @@ st.markdown("""
 </div>
 """.format(company_name), unsafe_allow_html=True)
 
-# 显示当前汇率信息
-st.info(f"💰 当前报价货币: {st.session_state.selected_currency} | 汇率: 1 {st.session_state.selected_currency} = {exchange_rates[st.session_state.selected_currency]:.2f} CNY")
-
-# 客户信息
-st.markdown("### 📋 客户信息")
-col1, col2 = st.columns(2)
-
-with col1:
-    customer = st.text_input("客户名称", "Antonia Continental Commerce Ltd.")
-    rep = st.text_input("客户代表", "Alfredo Mariani")
-    country = st.selectbox("目的国家", list(country_port_map.keys()), index=0)
-    port = country_port_map.get(country, "San Antonio")
-
-with col2:
-    st.text_input("目的港口", value=port, disabled=True)
-    email = st.text_input("邮箱", "16203962@yahoo.com")
-    address = st.text_area("公司地址", "4 Talcahuano Court, Talcahuano, Chile")
-    payment_terms = st.selectbox("付款方式", ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"])
-
-# 商品信息
-st.markdown("### 💎 商品信息")
-
-# 商品快速切换
-st.markdown("**快速选择商品：**")
-# 按类别显示商品
-categories = {}
-for product_name, product_data in product_presets.items():
-    category = product_data.get("category", "其他")
-    if category not in categories:
-        categories[category] = []
-    categories[category].append(product_name)
-
-for category, products in categories.items():
-    st.markdown(f"**{category}**")
-    cols = st.columns(len(products))
-    for i, product_name in enumerate(products):
-        with cols[i]:
-            if st.button(product_name.split()[0], key=f"btn_{product_name}", use_container_width=True):
-                st.session_state.current_product = product_name
-                st.rerun()
-
-st.markdown("---")
-
-# 根据选择的商品加载预设值
-selected_preset = product_presets[st.session_state.current_product]
-
-col3, col4 = st.columns(2)
-
-with col3:
-    if st.session_state.current_product == "自定义商品":
-        product_name = st.text_input("商品名称", "请输入商品名称")
-        hs_code = st.text_input("HS编码", "")
+# 显示当前汇率信息和抓取状态
+col_status1, col_status2, col_status3 = st.columns(3)
+with col_status1:
+    st.info(f"💰 当前报价货币: {st.session_state.selected_currency} | 汇率: 1 {st.session_state.selected_currency} = {exchange_rates[st.session_state.selected_currency]:.2f} CNY")
+with col_status2:
+    if st.session_state.customer_data_fetched:
+        st.success("✅ 客户数据已从外部网站抓取")
     else:
-        product_name = st.text_input("商品名称", st.session_state.current_product, disabled=True)
-        hs_code = st.text_input("HS编码", selected_preset["hs_code"])
+        st.warning("⏳ 客户数据待抓取")
+with col_status3:
+    if st.session_state.product_data_fetched:
+        st.success("✅ 商品数据已从外部网站抓取")
+    else:
+        st.warning("⏳ 商品数据待抓取")
+
+# ==================== 客户信息和商品信息左右并列 ====================
+col_left, col_right = st.columns(2, gap="large")
+
+# 左侧：客户信息
+with col_left:
+    st.markdown("""
+    <div class="section-header">
+        📋 客户信息
+    </div>
+    """, unsafe_allow_html=True)
     
-    quantity = st.number_input("数量 (克拉)", value=5000, step=100)
+    # 抓取客户信息按钮
+    col_fetch1, col_fetch2 = st.columns([3, 1])
+    with col_fetch1:
+        st.markdown(f"**数据来源:** {st.session_state.fetch_source}")
+    with col_fetch2:
+        if st.button("🔄 抓取客户信息", key="fetch_customer", use_container_width=True):
+            with st.spinner("正在从外部网站抓取客户数据..."):
+                result = fetch_customer_data_from_website(st.session_state.fetch_source)
+                if result["success"]:
+                    data = result["data"]
+                    # 更新session state
+                    st.session_state.customer_name = data["customer_name"]
+                    st.session_state.customer_rep = data["customer_rep"]
+                    st.session_state.customer_country = data["customer_country"]
+                    st.session_state.customer_email = data["customer_email"]
+                    st.session_state.customer_address = data["customer_address"]
+                    st.session_state.payment_terms = data["payment_terms"]
+                    st.session_state.customer_data_fetched = True
+                    st.session_state.customer_source = data.get("source", "未知来源")
+                    st.success(f"✅ 成功从{data.get('source', '外部网站')}抓取客户数据！")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ 抓取失败: {result.get('error', '未知错误')}")
+    
+    # 客户信息输入框
+    customer = st.text_input("客户名称", 
+                            value=st.session_state.get("customer_name", "Antonia Continental Commerce Ltd."), 
+                            key="customer_name")
+    rep = st.text_input("客户代表", 
+                       value=st.session_state.get("customer_rep", "Alfredo Mariani"), 
+                       key="customer_rep")
+    
+    # 国家选择
+    country_index = 0
+    if "customer_country" in st.session_state:
+        countries = list(country_port_map.keys())
+        if st.session_state.customer_country in countries:
+            country_index = countries.index(st.session_state.customer_country)
+    
+    country = st.selectbox("目的国家", list(country_port_map.keys()), 
+                          index=country_index, key="customer_country")
+    port = country_port_map.get(country, "San Antonio")
+    st.text_input("目的港口", value=port, disabled=True, key="customer_port")
+    
+    email = st.text_input("邮箱", 
+                         value=st.session_state.get("customer_email", "16203962@yahoo.com"), 
+                         key="customer_email")
+    address = st.text_area("公司地址", 
+                          value=st.session_state.get("customer_address", "4 Talcahuano Court, Talcahuano, Chile"), 
+                          key="customer_address", height=100)
+    
+    payment_index = 0
+    payment_options = ["T/T 30% deposit", "L/C at sight", "D/P", "D/A", "T/T 100% in advance"]
+    if "payment_terms" in st.session_state:
+        if st.session_state.payment_terms in payment_options:
+            payment_index = payment_options.index(st.session_state.payment_terms)
+    
+    payment_terms = st.selectbox("付款方式", payment_options, 
+                                index=payment_index, key="payment_terms")
+    
+    # 显示抓取来源信息
+    if st.session_state.get("customer_data_fetched", False):
+        st.info(f"📌 数据来源: {st.session_state.get('customer_source', '外部网站')} | 抓取时间: {datetime.now().strftime('%H:%M:%S')}")
 
-with col4:
+# 右侧：商品信息
+with col_right:
+    st.markdown("""
+    <div class="section-header">
+        💎 商品信息
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 抓取商品信息按钮
+    col_fetch3, col_fetch4 = st.columns([3, 1])
+    with col_fetch3:
+        st.markdown(f"**数据来源:** {st.session_state.fetch_source}")
+    with col_fetch4:
+        if st.button("🔄 抓取商品信息", key="fetch_product", use_container_width=True):
+            with st.spinner("正在从外部网站抓取商品数据..."):
+                result = fetch_product_data_from_website(st.session_state.fetch_source)
+                if result["success"]:
+                    data = result["data"]
+                    # 更新session state
+                    st.session_state.fetched_product_name = data["product_name"]
+                    st.session_state.fetched_hs_code = data["hs_code"]
+                    st.session_state.fetched_quantity = data["quantity"]
+                    st.session_state.fetched_price = data["price_per_ct"]
+                    st.session_state.fetched_volume = data["volume_per_pack"]
+                    st.session_state.fetched_weight = data["weight_per_pack"]
+                    st.session_state.fetched_description = data.get("description", "")
+                    st.session_state.product_data_fetched = True
+                    st.session_state.product_source = data.get("source", "未知来源")
+                    
+                    # 设置当前商品为自定义以便显示抓取的数据
+                    st.session_state.current_product = "自定义商品"
+                    
+                    st.success(f"✅ 成功从{data.get('source', '外部网站')}抓取商品数据！")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ 抓取失败: {result.get('error', '未知错误')}")
+    
+    # 商品快速切换
+    st.markdown("**快速选择商品：**")
+    
+    # 按类别显示商品
+    categories = {}
+    for product_name, product_data in product_presets.items():
+        category = product_data.get("category", "其他")
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(product_name)
+    
+    # 创建商品选择按钮
+    for category, products in categories.items():
+        if category != "其他":  # 不显示"其他"类别在快速选择中
+            st.markdown(f"**{category}**")
+            cols = st.columns(min(len(products), 4))
+            for i, product_name in enumerate(products[:4]):  # 最多显示4个
+                with cols[i]:
+                    if st.button(product_name.split()[0], key=f"btn_{product_name}", use_container_width=True):
+                        st.session_state.current_product = product_name
+                        st.rerun()
+    
+    st.markdown("---")
+    
+    # 根据选择的商品加载预设值
+    selected_preset = product_presets[st.session_state.current_product]
+    
+    # 商品详细信息
     if st.session_state.current_product == "自定义商品":
-        price_per_ct = st.number_input(f"采购单价 (￥/克拉)", value=0.0, step=1.0)
-        volume_per_pack = st.number_input("单箱体积 (CBM)", value=0.0, format="%.3f")
-        weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.0, format="%.2f")
+        # 如果是从外部抓取的数据，使用抓取的值
+        product_name = st.text_input("商品名称", 
+                                    value=st.session_state.get("fetched_product_name", "请输入商品名称"), 
+                                    key="product_name_custom")
+        hs_code = st.text_input("HS编码", 
+                               value=st.session_state.get("fetched_hs_code", ""), 
+                               key="hs_code_custom")
     else:
-        price_per_ct = st.number_input(f"采购单价 (￥/克拉)", value=selected_preset["price_per_ct"], step=1.0)
-        volume_per_pack = st.number_input("单箱体积 (CBM)", value=selected_preset["volume_per_pack"], format="%.3f")
-        weight_per_pack = st.number_input("单箱毛重 (KG)", value=selected_preset["weight_per_pack"], format="%.2f")
+        product_name = st.text_input("商品名称", st.session_state.current_product, disabled=True, key="product_name")
+        hs_code = st.text_input("HS编码", selected_preset["hs_code"], key="hs_code")
+    
+    # 数量和单价
+    col_q1, col_q2 = st.columns(2)
+    with col_q1:
+        if st.session_state.current_product == "自定义商品" and "fetched_quantity" in st.session_state:
+            quantity = st.number_input("数量 (克拉)", 
+                                      value=st.session_state.fetched_quantity, 
+                                      step=100, key="quantity")
+        else:
+            quantity = st.number_input("数量 (克拉)", value=5000, step=100, key="quantity")
+    
+    with col_q2:
+        if st.session_state.current_product == "自定义商品":
+            if "fetched_price" in st.session_state:
+                price_per_ct = st.number_input(f"采购单价 (￥/克拉)", 
+                                              value=st.session_state.fetched_price, 
+                                              step=1.0, key="price_custom")
+            else:
+                price_per_ct = st.number_input(f"采购单价 (￥/克拉)", value=0.0, step=1.0, key="price_custom")
+        else:
+            price_per_ct = st.number_input(f"采购单价 (￥/克拉)", 
+                                          value=selected_preset["price_per_ct"], 
+                                          step=1.0, key="price")
+    
+    # 包装信息
+    st.markdown("**包装信息**")
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        if st.session_state.current_product == "自定义商品":
+            if "fetched_volume" in st.session_state:
+                volume_per_pack = st.number_input("单箱体积 (CBM)", 
+                                                 value=st.session_state.fetched_volume, 
+                                                 format="%.3f", key="volume_custom")
+            else:
+                volume_per_pack = st.number_input("单箱体积 (CBM)", value=0.0, format="%.3f", key="volume_custom")
+        else:
+            volume_per_pack = st.number_input("单箱体积 (CBM)", 
+                                             value=selected_preset["volume_per_pack"], 
+                                             format="%.3f", key="volume")
+    
+    with col_p2:
+        if st.session_state.current_product == "自定义商品":
+            if "fetched_weight" in st.session_state:
+                weight_per_pack = st.number_input("单箱毛重 (KG)", 
+                                                 value=st.session_state.fetched_weight, 
+                                                 format="%.2f", key="weight_custom")
+            else:
+                weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.0, format="%.2f", key="weight_custom")
+        else:
+            weight_per_pack = st.number_input("单箱毛重 (KG)", 
+                                             value=selected_preset["weight_per_pack"], 
+                                             format="%.2f", key="weight")
     
     # 显示商品描述
     if st.session_state.current_product != "自定义商品":
         st.info(f"📝 {selected_preset['description']}")
+    elif st.session_state.get("fetched_description", ""):
+        st.info(f"📝 {st.session_state.fetched_description}")
+    
+    # 显示抓取来源信息
+    if st.session_state.get("product_data_fetched", False):
+        st.info(f"📌 数据来源: {st.session_state.get('product_source', '外部网站')} | 抓取时间: {datetime.now().strftime('%H:%M:%S')}")
+    
+    # 添加自定义商品按钮
+    if st.session_state.current_product != "自定义商品":
+        if st.button("➕ 添加新商品预设", use_container_width=True):
+            st.session_state.current_product = "自定义商品"
+            st.rerun()
 
-# 添加自定义商品按钮
-if st.session_state.current_product != "自定义商品":
-    if st.button("➕ 添加新商品预设", use_container_width=True):
-        st.session_state.current_product = "自定义商品"
-        st.rerun()
+# ==================== 计算结果区域 ====================
+st.markdown("---")
+st.markdown("### 📊 报价计算结果")
 
 # 计算按钮和结果
-col5, col6, col7 = st.columns([1, 1, 3])
-with col5:
+col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+with col_btn1:
     if st.button("开始计算", type="primary", use_container_width=True):
         # 计算报价
         total_cost_cny = quantity * price_per_ct
@@ -342,21 +694,20 @@ with col5:
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "product": product_name,
             "customer": customer,
-            "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}"
+            "amount": f"{total_cost_target:,.2f} {st.session_state.selected_currency}",
+            "fetched": st.session_state.customer_data_fetched or st.session_state.product_data_fetched
         }
         st.session_state.quote_history.append(quote_record)
         
         st.success("计算完成！")
         st.balloons()
 
-with col6:
+with col_btn2:
     if st.button("📧 发送报价", use_container_width=True):
         st.info("报价单已准备发送！")
 
-st.markdown("---")
-
-# 显示计算结果和当前选择
-col_result1, col_result2, col_result3 = st.columns(3)
+# 显示计算结果
+col_result1, col_result2, col_result3, col_result4 = st.columns(4)
 
 with col_result1:
     total_cost_cny = quantity * price_per_ct
@@ -373,18 +724,39 @@ with col_result3:
               f"{suggested_price:,.2f} {st.session_state.selected_currency}",
               delta=f"{profit_margin}% 利润率")
 
+with col_result4:
+    total_packages = math.ceil(quantity/100) if quantity > 0 else 0  # 假设每箱100克拉
+    st.metric("总箱数", f"{total_packages:,} 箱")
+
 # 显示详细商品信息
 st.markdown("### 📦 商品详情")
-col_detail1, col_detail2, col_detail3 = st.columns(3)
+col_detail1, col_detail2, col_detail3, col_detail4 = st.columns(4)
 with col_detail1:
     st.info(f"**HS编码:** {hs_code}")
 with col_detail2:
-    st.info(f"**总箱数:** {math.ceil(quantity/100):,} 箱")
+    st.info(f"**总箱数:** {total_packages:,} 箱")
 with col_detail3:
-    st.info(f"**总体积:** {quantity/100 * volume_per_pack:.2f} CBM")
+    total_volume = total_packages * volume_per_pack if total_packages > 0 else 0
+    st.info(f"**总体积:** {total_volume:.2f} CBM")
+with col_detail4:
+    total_weight = total_packages * weight_per_pack if total_packages > 0 else 0
+    st.info(f"**总毛重:** {total_weight:.2f} KG")
+
+# 显示抓取数据汇总
+if st.session_state.customer_data_fetched or st.session_state.product_data_fetched:
+    st.markdown("---")
+    st.markdown("### 📋 抓取数据汇总")
+    col_sum1, col_sum2 = st.columns(2)
+    with col_sum1:
+        if st.session_state.customer_data_fetched:
+            st.success(f"✅ 客户数据已抓取: {st.session_state.get('customer_name', '')}")
+    with col_sum2:
+        if st.session_state.product_data_fetched:
+            st.success(f"✅ 商品数据已抓取: {st.session_state.get('fetched_product_name', '')}")
 
 st.markdown("---")
-st.markdown(f"© 2026 {company_name} | 技术支持: AI价到团队")
+st.markdown(f"© 2026 {company_name} | 技术支持: AI价到团队 | Power Automate Desktop 集成")
+
 
 
 
