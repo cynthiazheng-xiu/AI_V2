@@ -5,7 +5,7 @@ import math
 # 页面配置
 st.set_page_config(
     page_title="AI价到 - 小微外贸智能报价助手",
-    page_icon="??",
+    page_icon="CN",
     layout="wide"
 )
 
@@ -55,7 +55,7 @@ country_port_map = {
 china_ports = ["Shanghai", "Ningbo", "Shenzhen", "Guangzhou"]
 
 # 主界面
-st.markdown("### ?? 客户信息")
+st.markdown("###  客户信息")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -84,10 +84,11 @@ with col4:
     weight_per_pack = st.number_input("单箱毛重 (KG)", value=0.7, format="%.2f")
 
 # 计算按钮
-if st.button("?? 开始计算", type="primary"):
+if st.button("开始计算", type="primary"):
     st.success("计算完成！")
     st.balloons()
 
 st.markdown("---")
 
 st.markdown("? 2026 ABC International Trading CO. Ltd")
+
