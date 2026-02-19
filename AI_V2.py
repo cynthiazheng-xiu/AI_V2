@@ -2,14 +2,14 @@ import streamlit as st
 import pandas as pd
 import math
 
-# Ò³ÃæÅäÖÃ
+# é¡µé¢é…ç½®
 st.set_page_config(
-    page_title="AI¼Ûµ½ - Ğ¡Î¢ÍâÃ³ÖÇÄÜ±¨¼ÛÖúÊÖ",
+    page_title="AIä»·åˆ° - å°å¾®å¤–è´¸æ™ºèƒ½æŠ¥ä»·åŠ©æ‰‹",
     page_icon="??",
     layout="wide"
 )
 
-# ×Ô¶¨ÒåCSSÑùÊ½
+# è‡ªå®šä¹‰CSSæ ·å¼
 st.markdown("""
 <style>
     .main-header {
@@ -37,56 +37,57 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Í·²¿
+# å¤´éƒ¨
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0;">?? AI¼Ûµ½ - Ğ¡Î¢ÍâÃ³ÖÇÄÜ±¨¼ÛÖúÊÖ</h1>
+    <h1 style="margin:0;">?? AIä»·åˆ° - å°å¾®å¤–è´¸æ™ºèƒ½æŠ¥ä»·åŠ©æ‰‹</h1>
     <p style="margin:0.5rem 0 0 0;">ABC International Trading CO. Ltd</p>
 </div>
 """, unsafe_allow_html=True)
 
-# ¹ú¼Ò¸Û¿ÚÓ³Éä
+# å›½å®¶æ¸¯å£æ˜ å°„
 country_port_map = {
     "Chile": "San Antonio", "USA": "Los Angeles", "Germany": "Hamburg",
     "Philippines": "Manila", "China": "Shanghai"
 }
 
-# ÖĞ¹ú¸Û¿Ú
+# ä¸­å›½æ¸¯å£
 china_ports = ["Shanghai", "Ningbo", "Shenzhen", "Guangzhou"]
 
-# Ö÷½çÃæ
-st.markdown("### ?? ¿Í»§ĞÅÏ¢")
+# ä¸»ç•Œé¢
+st.markdown("### ?? å®¢æˆ·ä¿¡æ¯")
 col1, col2 = st.columns(2)
 
 with col1:
-    customer = st.text_input("¿Í»§Ãû³Æ", "Antonia Continental Commerce Ltd.")
-    rep = st.text_input("¿Í»§´ú±í", "Alfredo Mariani")
-    country = st.selectbox("Ä¿µÄ¹ú¼Ò", list(country_port_map.keys()), index=0)
+    customer = st.text_input("å®¢æˆ·åç§°", "Antonia Continental Commerce Ltd.")
+    rep = st.text_input("å®¢æˆ·ä»£è¡¨", "Alfredo Mariani")
+    country = st.selectbox("ç›®çš„å›½å®¶", list(country_port_map.keys()), index=0)
     port = country_port_map.get(country, "San Antonio")
 
 with col2:
-    st.text_input("Ä¿µÄ¸Û¿Ú", value=port, disabled=True)
-    email = st.text_input("ÓÊÏä", "16203962@yahoo.com")
-    address = st.text_area("¹«Ë¾µØÖ·", "4 Talcahuano Court, Talcahuano, Chile")
+    st.text_input("ç›®çš„æ¸¯å£", value=port, disabled=True)
+    email = st.text_input("é‚®ç®±", "16203962@yahoo.com")
+    address = st.text_area("å…¬å¸åœ°å€", "4 Talcahuano Court, Talcahuano, Chile")
 
-# ÉÌÆ·ĞÅÏ¢
-st.markdown("### ?? ÉÌÆ·ĞÅÏ¢")
+# å•†å“ä¿¡æ¯
+st.markdown("### ?? å•†å“ä¿¡æ¯")
 col3, col4 = st.columns(2)
 
 with col3:
-    product_name = st.text_input("ÉÌÆ·Ãû³Æ", "À¶±¦Ê¯ (Sapphires)")
-    hs_code = st.text_input("HS±àÂë", "7103910000")
-    quantity = st.number_input("ÊıÁ¿ (¿ËÀ­)", value=5000, step=100)
+    product_name = st.text_input("å•†å“åç§°", "è“å®çŸ³ (Sapphires)")
+    hs_code = st.text_input("HSç¼–ç ", "7103910000")
+    quantity = st.number_input("æ•°é‡ (å…‹æ‹‰)", value=5000, step=100)
 
 with col4:
-    price_per_ct = st.number_input("²É¹ºµ¥¼Û (£¤/¿ËÀ­)", value=50.0, step=1.0)
-    volume_per_pack = st.number_input("µ¥ÏäÌå»ı (CBM)", value=0.04, format="%.3f")
-    weight_per_pack = st.number_input("µ¥ÏäÃ«ÖØ (KG)", value=0.7, format="%.2f")
+    price_per_ct = st.number_input("é‡‡è´­å•ä»· (ï¿¥/å…‹æ‹‰)", value=50.0, step=1.0)
+    volume_per_pack = st.number_input("å•ç®±ä½“ç§¯ (CBM)", value=0.04, format="%.3f")
+    weight_per_pack = st.number_input("å•ç®±æ¯›é‡ (KG)", value=0.7, format="%.2f")
 
-# ¼ÆËã°´Å¥
-if st.button("?? ¿ªÊ¼¼ÆËã", type="primary"):
-    st.success("¼ÆËãÍê³É£¡")
+# è®¡ç®—æŒ‰é’®
+if st.button("?? å¼€å§‹è®¡ç®—", type="primary"):
+    st.success("è®¡ç®—å®Œæˆï¼")
     st.balloons()
 
 st.markdown("---")
+
 st.markdown("? 2026 ABC International Trading CO. Ltd")
