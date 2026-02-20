@@ -1477,7 +1477,7 @@ if st.session_state.budget:
     budget_html = display_budget_table(b, selected_term, current_exchange_rate, st.session_state.selected_currency)
     st.markdown(budget_html, unsafe_allow_html=True)
 
-st.markdown("---"
+st.markdown("---")
 
 # -------------------- 报价历史 --------------------
 with st.sidebar:
@@ -1499,6 +1499,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
