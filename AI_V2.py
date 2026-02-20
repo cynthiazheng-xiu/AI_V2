@@ -174,9 +174,9 @@ st.markdown("""
     }
     .shipping-option {
         background-color: #e7f3ff;
-        padding: 0.5rem;
+        padding: 1rem;
         border-radius: 5px;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.5rem;
         border-left: 3px solid #0066cc;
     }
     .best-option {
@@ -351,12 +351,10 @@ def load_all_data_from_excel(force_refresh=False):
         return data
     
     data["file_exists"] = True
-    st.success(f"✅ 找到Excel文件: {EXCEL_FILE}")
     
     try:
         # 读取所有工作表
         excel_file = pd.ExcelFile(EXCEL_FILE)
-        st.info(f"找到工作表: {', '.join(excel_file.sheet_names)}")
         
         # ========== 1. 读取港口信息表 ==========
         if SHEET_PORTS in excel_file.sheet_names:
@@ -365,14 +363,13 @@ def load_all_data_from_excel(force_refresh=False):
                 ports_dict = {}
                 for _, row in df_ports.iterrows():
                     if len(row) >= 2:
-                        country = str(row.iloc[0]).strip()
-                        port = str(row.iloc[1]).strip()
+                        country = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+                        port = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
                         if country and port and country != 'nan' and port != 'nan':
                             ports_dict[country] = port
                 data["ports"] = ports_dict
-                st.success(f"✅ 加载了 {len(ports_dict)} 个国家港口映射")
         else:
-            st.warning(f"⚠️ 工作表 '{SHEET_PORTS}' 不存在")
+            pass
         
         # ========== 2. 读取汇率表 ==========
         if SHEET_RATES in excel_file.sheet_names:
@@ -381,23 +378,20 @@ def load_all_data_from_excel(force_refresh=False):
                 rates_dict = DEFAULT_RATES.copy()
                 for _, row in df_rates.iterrows():
                     if len(row) >= 3:
-                        currency = str(row.iloc[0]).strip()
+                        currency = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
                         try:
-                            rate = float(row.iloc[2])
-                            if currency and currency != 'nan':
+                            rate = float(row.iloc[2]) if pd.notna(row.iloc[2]) else 0
+                            if currency and currency != 'nan' and rate > 0:
                                 rates_dict[currency] = rate
                         except:
                             pass
                 data["rates"] = rates_dict
-                st.success(f"✅ 加载了 {len(rates_dict)} 种汇率")
                 
                 # 记录发布时间和抓取时间（如果有）
                 if len(df_rates.columns) > 3:
                     data["publish_time"] = str(df_rates.iloc[0, 3]) if pd.notna(df_rates.iloc[0, 3]) else "未知"
                 if len(df_rates.columns) > 4:
                     data["fetch_time_excel"] = str(df_rates.iloc[0, 4]) if pd.notna(df_rates.iloc[0, 4]) else format_beijing_time()
-        else:
-            st.warning(f"⚠️ 工作表 '{SHEET_RATES}' 不存在，使用默认汇率")
         
         # ========== 3. 读取HS信息表 ==========
         if SHEET_HS in excel_file.sheet_names:
@@ -406,8 +400,8 @@ def load_all_data_from_excel(force_refresh=False):
                 hs_dict = {}
                 for _, row in df_hs.iterrows():
                     if len(row) >= 2:
-                        hs_code = str(row.iloc[0]).strip()
-                        hs_desc = str(row.iloc[1]).strip() if len(row) > 1 else ""
+                        hs_code = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+                        hs_desc = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
                         if hs_code and hs_code != 'nan':
                             hs_dict[hs_code] = {
                                 "description": hs_desc,
@@ -416,9 +410,6 @@ def load_all_data_from_excel(force_refresh=False):
                                 "inspection": str(row.iloc[4]) if len(row) > 4 and pd.notna(row.iloc[4]) else "无"
                             }
                 data["hs_info"] = hs_dict
-                st.success(f"✅ 加载了 {len(hs_dict)} 条HS编码信息")
-        else:
-            st.warning(f"⚠️ 工作表 '{SHEET_HS}' 不存在")
         
         # ========== 4. 读取客户信息表 ==========
         if SHEET_CUSTOMERS in excel_file.sheet_names:
@@ -434,9 +425,6 @@ def load_all_data_from_excel(force_refresh=False):
                     "payment_terms": str(latest.iloc[5]) if len(df_customers.columns) > 5 and pd.notna(latest.iloc[5]) else "",
                     "fetch_time": str(latest.iloc[6]) if len(df_customers.columns) > 6 and pd.notna(latest.iloc[6]) else format_beijing_time()
                 }
-                st.success("✅ 加载了客户信息")
-        else:
-            st.warning(f"⚠️ 工作表 '{SHEET_CUSTOMERS}' 不存在")
         
         # ========== 5. 读取商品信息表 ==========
         if SHEET_PRODUCTS in excel_file.sheet_names:
@@ -466,17 +454,12 @@ def load_all_data_from_excel(force_refresh=False):
                     "description": str(latest.iloc[19]) if len(df_products.columns) > 19 and pd.notna(latest.iloc[19]) else "",
                     "fetch_time": str(latest.iloc[20]) if len(df_products.columns) > 20 and pd.notna(latest.iloc[20]) else format_beijing_time()
                 }
-                st.success("✅ 加载了商品信息")
-        else:
-            st.warning(f"⚠️ 工作表 '{SHEET_PRODUCTS}' 不存在")
         
         # 保存到缓存
         save_cache(data)
         
     except Exception as e:
         st.error(f"读取Excel文件时出错: {e}")
-        import traceback
-        st.code(traceback.format_exc())
     
     return data
 
@@ -690,7 +673,7 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         <tr>
             <td><strong>1. 采购成本</strong></td>
             <td>含税购入价</td>
-            <td style="text-align: right">{budget['采购成本']:,.2f}</td>
+            <td style="text-align: right">{budget.get('采购成本', 0):,.2f}</td>
         </tr>
     """
     
@@ -699,20 +682,20 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         <tr>
             <td><strong>2. 退税收入</strong></td>
             <td>退税额</td>
-            <td style="text-align: right">{budget['出口退税']:,.2f}</td>
+            <td style="text-align: right">{budget.get('出口退税', 0):,.2f}</td>
         </tr>
     """
     
     # 3. 国内费用
     html += f"""
         <tr>
-            <td rowspan="6"><strong>3. 国内费用</strong></td>
+            <td rowspan="9"><strong>3. 国内费用</strong></td>
             <td>出口内陆运费</td>
             <td style="text-align: right">{budget.get('内陆运费', 0):,.2f}</td>
         </tr>
         <tr>
             <td>国际运费</td>
-            <td style="text-align: right">{budget['海运费']:,.2f}</td>
+            <td style="text-align: right">{budget.get('海运费', 0):,.2f}</td>
         </tr>
         <tr>
             <td>出口货代杂费</td>
@@ -731,24 +714,21 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
             <td style="text-align: right">{budget.get('报关费', 41.04):,.2f}</td>
         </tr>
         <tr>
-            <td></td>
             <td>出口关税</td>
             <td style="text-align: right">{budget.get('出口关税', 0):,.2f}</td>
         </tr>
         <tr>
-            <td></td>
             <td>产地证书费</td>
             <td style="text-align: right">{budget.get('产地证费', 0):,.2f}</td>
         </tr>
         <tr>
-            <td></td>
             <td>保险费</td>
-            <td style="text-align: right">{budget['保险费']:,.2f}</td>
+            <td style="text-align: right">{budget.get('保险费', 0):,.2f}</td>
         </tr>
         <tr>
             <td></td>
             <td><strong>合计</strong></td>
-            <td style="text-align: right"><strong>{budget['国内费用合计']:,.2f}</strong></td>
+            <td style="text-align: right"><strong>{budget.get('国内费用合计', 0):,.2f}</strong></td>
         </tr>
     """
     
@@ -770,7 +750,7 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         <tr>
             <td></td>
             <td><strong>合计</strong></td>
-            <td style="text-align: right"><strong>{budget['银行费用合计']:,.2f}</strong></td>
+            <td style="text-align: right"><strong>{budget.get('银行费用合计', 0):,.2f}</strong></td>
         </tr>
     """
     
@@ -796,8 +776,8 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
     html += f"""
         <tr class="budget-highlight">
             <td><strong>对外报价</strong></td>
-            <td>{budget['对外报价']:,.2f} {selected_currency}</td>
-            <td style="text-align: right">¥{budget['对外报价CNY']:,.2f}</td>
+            <td>{budget.get('对外报价', 0):,.2f} {selected_currency}</td>
+            <td style="text-align: right">¥{budget.get('对外报价CNY', 0):,.2f}</td>
         </tr>
     """
     
@@ -806,7 +786,7 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         <tr>
             <td><strong>预期盈亏额</strong></td>
             <td></td>
-            <td style="text-align: right">¥{budget['预期盈亏额']:,.2f}</td>
+            <td style="text-align: right">¥{budget.get('预期盈亏额', 0):,.2f}</td>
         </tr>
     """
     
@@ -815,7 +795,7 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         <tr>
             <td><strong>预期盈亏率</strong></td>
             <td></td>
-            <td style="text-align: right">{budget['预期盈亏率']:.2f}%</td>
+            <td style="text-align: right">{budget.get('预期盈亏率', 0):.2f}%</td>
         </tr>
     """
     
@@ -892,32 +872,33 @@ if 'publish_time' not in st.session_state:
     st.session_state.publish_time = "未知"
 if 'fetch_time_excel' not in st.session_state:
     st.session_state.fetch_time_excel = "未知"
+if 'budget' not in st.session_state:
+    st.session_state.budget = None
 
 # 初始化加载数据
 if 'exchange_rates' not in st.session_state:
     # 首次加载，尝试从Excel读取
-    with st.spinner("正在从Excel加载数据..."):
-        data = load_all_data_from_excel()
-        st.session_state.exchange_rates = data.get("rates", DEFAULT_RATES)
-        st.session_state.ports = data.get("ports", {})
-        st.session_state.hs_info = data.get("hs_info", {})
-        
-        if data.get("customer"):
-            st.session_state.customer_data = data["customer"]
-            st.session_state.customer_fetched = True
-        
-        if data.get("product"):
-            st.session_state.product_data = data["product"]
-            st.session_state.product_fetched = True
-        
-        if data.get("file_exists"):
-            st.session_state.data_source = "Excel"
-        else:
-            st.session_state.data_source = "默认数据"
-        
-        st.session_state.last_refresh_time = format_beijing_time()
-        st.session_state.publish_time = data.get("publish_time", "未知")
-        st.session_state.fetch_time_excel = data.get("fetch_time_excel", "未知")
+    data = load_all_data_from_excel()
+    st.session_state.exchange_rates = data.get("rates", DEFAULT_RATES)
+    st.session_state.ports = data.get("ports", {})
+    st.session_state.hs_info = data.get("hs_info", {})
+    
+    if data.get("customer"):
+        st.session_state.customer_data = data["customer"]
+        st.session_state.customer_fetched = True
+    
+    if data.get("product"):
+        st.session_state.product_data = data["product"]
+        st.session_state.product_fetched = True
+    
+    if data.get("file_exists"):
+        st.session_state.data_source = "Excel"
+    else:
+        st.session_state.data_source = "默认数据"
+    
+    st.session_state.last_refresh_time = format_beijing_time()
+    st.session_state.publish_time = data.get("publish_time", "未知")
+    st.session_state.fetch_time_excel = data.get("fetch_time_excel", "未知")
 
 # ==================== 页面内容开始 ====================
 
@@ -997,7 +978,7 @@ with st.sidebar:
     # 货币选择
     available_currencies = list(st.session_state.exchange_rates.keys())
     if st.session_state.selected_currency not in available_currencies:
-        st.session_state.selected_currency = "USD"
+        st.session_state.selected_currency = "USD" if "USD" in available_currencies else available_currencies[0] if available_currencies else "USD"
     
     target_currency = st.selectbox("报价货币", available_currencies, 
                                   index=available_currencies.index(st.session_state.selected_currency) 
@@ -1370,7 +1351,7 @@ if calculate_pressed:
         # 出口退税
         tax_refund = total_cost_cny * (tax_rate / 100)
         
-        # 总成本 = 采购成本 - 退税 + 国内费用 + 银行费用 + 其他费用
+        # 总成本 = 采购成本 - 退税 + 国内费用 + 银行费用 + 其他费用 + 海运费 + 保险费
         total_cost_with_freight = (total_cost_cny - tax_refund + domestic_fee_total + 
                                    bank_fee_total + st.session_state.other_fee + freight_cny + insurance_fee)
         
@@ -1412,7 +1393,7 @@ if calculate_pressed:
             "shipping_options": shipping_options,
             "best_shipping_index": best_index,
             "selected_shipping": best_option["name"],
-            "selected_shipping_desc": best_option["description"],
+            "selected_shipping_desc": best_option.get("description", ""),
             "shipping_calculation": best_option.get("calculation", ""),
             "freight_usd": freight_usd
         }
@@ -1424,7 +1405,7 @@ if calculate_pressed:
         st.warning("请填写商品数量和单价")
 
 # 显示预算表
-if 'budget' in st.session_state and st.session_state.budget:
+if st.session_state.budget:
     b = st.session_state.budget
     
     # 显示整批货物信息（放在预算表前面）
@@ -1438,10 +1419,10 @@ if 'budget' in st.session_state and st.session_state.budget:
             <th>总净重 (KG)</th>
         </tr>
         <tr>
-            <td>{b['总箱数']:,} 箱</td>
-            <td>{b['总体积']:.2f}</td>
-            <td>{b['总毛重']:.2f}</td>
-            <td>{b['总净重']:.2f}</td>
+            <td>{b.get('总箱数', 0):,} 箱</td>
+            <td>{b.get('总体积', 0):.2f}</td>
+            <td>{b.get('总毛重', 0):.2f}</td>
+            <td>{b.get('总净重', 0):.2f}</td>
         </tr>
     </table>
     """, unsafe_allow_html=True)
@@ -1450,34 +1431,37 @@ if 'budget' in st.session_state and st.session_state.budget:
     st.markdown("#### 🚢 最终运费方案")
     st.markdown(f"""
     <div class="shipping-option best-option">
-        <strong>✅ 选中方案: {b['selected_shipping']}</strong><br>
-        {b['selected_shipping_desc']}<br>
+        <strong>✅ 选中方案: {b.get('selected_shipping', '未知')}</strong><br>
+        {b.get('selected_shipping_desc', '')}<br>
         <strong>计算原理:</strong> {b.get('shipping_calculation', '')}<br>
-        <strong>运费:</strong> ${b['freight_usd']:,.2f} | ￥{b['海运费']:,.2f}
+        <strong>运费:</strong> ${b.get('freight_usd', 0):,.2f} | ￥{b.get('海运费', 0):,.2f}
     </div>
     """, unsafe_allow_html=True)
     
     # 显示运输方案对比（可折叠）
     with st.expander("查看所有运输方案对比"):
         st.markdown("#### 所有运输方案（按成本排序）")
-        for i, option in enumerate(b.get("shipping_options", [])):
-            if i == b.get("best_shipping_index", 0):
+        shipping_options = b.get("shipping_options", [])
+        best_index = b.get("best_shipping_index", 0)
+        
+        for i, option in enumerate(shipping_options):
+            if i == best_index:
                 st.markdown(f"""
                 <div class="shipping-option best-option">
-                    <strong>✅ 最佳方案 #{i+1}: {option['name']}</strong><br>
-                    {option['description']}<br>
+                    <strong>✅ 最佳方案 #{i+1}: {option.get('name', '未知')}</strong><br>
+                    {option.get('description', '')}<br>
                     <strong>计算原理:</strong> {option.get('calculation', '')}<br>
-                    运费: ${option['cost_usd']:,.2f} | ￥{option['cost_usd'] * current_exchange_rate:,.2f}<br>
-                    <small>{option['details']}</small>
+                    运费: ${option.get('cost_usd', 0):,.2f} | ￥{option.get('cost_usd', 0) * current_exchange_rate:,.2f}<br>
+                    <small>{option.get('details', '')}</small>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class="shipping-option">
-                    <strong>方案 #{i+1}: {option['name']}</strong><br>
-                    {option['description']}<br>
+                    <strong>方案 #{i+1}: {option.get('name', '未知')}</strong><br>
+                    {option.get('description', '')}<br>
                     <strong>计算原理:</strong> {option.get('calculation', '')}<br>
-                    运费: ${option['cost_usd']:,.2f} | ￥{option['cost_usd'] * current_exchange_rate:,.2f}
+                    运费: ${option.get('cost_usd', 0):,.2f} | ￥{option.get('cost_usd', 0) * current_exchange_rate:,.2f}
                 </div>
                 """, unsafe_allow_html=True)
     
@@ -1508,6 +1492,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
