@@ -1273,99 +1273,147 @@ st.markdown("---")
 
 # -------------------- 商品信息 --------------------
 st.markdown("### 💎 商品信息")
-if st.session_state.product_fetched:
-    st.success("✅ 已从Excel加载商品数据")
-else:
-    st.info("⏳ 可点击上方抓取按钮获取或手动输入")
 
+# 添加搜索区域
+col_search1, col_search2, col_search3 = st.columns([3, 2, 1])
+with col_search1:
+    search_term = st.text_input("输入商品编号或英文名称", key="product_search", placeholder="例如: N003 或 Sapphires")
+with col_search2:
+    search_by = st.selectbox("搜索方式", ["商品编号", "英文名称"], key="search_by")
+with col_search3:
+    search_button = st.button("🔍 PAD查找", type="primary", use_container_width=True)
+
+# 处理搜索
+if search_button and search_term:
+    search_by_code = "code" if search_by == "商品编号" else "name"
+    result = run_pad_search_product(search_term, search_by_code)
+    if result["success"]:
+        st.session_state.product_data = result["data"]
+        st.session_state.product_fetched = True
+        st.success(f"✅ {result['message']}")
+        st.rerun()
+    else:
+        st.error(f"❌ {result['message']}")
+
+# 显示数据来源状态
+if st.session_state.product_fetched:
+    st.success(f"✅ 已加载商品数据: {st.session_state.product_data.get('product_name', '未知')}")
+else:
+    st.info("⏳ 请输入商品编号或英文名称点击查找")
+
+# 获取商品数据
 default_product = st.session_state.product_data if st.session_state.product_data else {}
 
+# 商品信息输入表单（从查找到的数据填充）
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    product_code = st.text_input("商品编号", value=default_product.get("product_code", "N003"), key="product_code")
+    product_code = st.text_input("商品编号", 
+        value=default_product.get("product_code", ""), 
+        key="product_code",
+        disabled=bool(st.session_state.product_data))  # 如果有数据则禁用
 with col2:
-    goods_type = st.text_input("货物类型", value=default_product.get("goods_type", "宝石或半宝石"), key="goods_type")
+    goods_type = st.text_input("货物类型", 
+        value=default_product.get("goods_type", ""), 
+        key="goods_type",
+        disabled=bool(st.session_state.product_data))
 with col3:
-    product_name = st.text_input("商品名称", value=default_product.get("product_name", "蓝宝石"), key="product_name")
+    product_name = st.text_input("商品名称", 
+        value=default_product.get("product_name", ""), 
+        key="product_name",
+        disabled=bool(st.session_state.product_data))
 with col4:
-    product_name_en = st.text_input("英文名称", value=default_product.get("product_name_en", "Sapphires"), key="product_name_en")
+    product_name_en = st.text_input("英文名称", 
+        value=default_product.get("product_name_en", ""), 
+        key="product_name_en",
+        disabled=bool(st.session_state.product_data))
 
 col5, col6, col7, col8 = st.columns(4)
 with col5:
-    specification_cn = st.text_input("规格型号（中文）", value=default_product.get("specification_cn", "已加工，未镶嵌，天然，无等级，刚玉"), key="spec_cn")
+    specification_cn = st.text_input("规格型号（中文）", 
+        value=default_product.get("specification_cn", ""), 
+        key="spec_cn",
+        disabled=bool(st.session_state.product_data))
 with col6:
-    specification_en = st.text_input("规格型号（英文）", value=default_product.get("specification_en", "Processed,not inlaid,natural,no grade,corundum"), key="spec_en")
+    specification_en = st.text_input("规格型号（英文）", 
+        value=default_product.get("specification_en", ""), 
+        key="spec_en",
+        disabled=bool(st.session_state.product_data))
 with col7:
-    hs_code = st.text_input("HS编码", value=default_product.get("hs_code", "7103910000"), key="hs_code")
+    hs_code = st.text_input("HS编码", 
+        value=default_product.get("hs_code", ""), 
+        key="hs_code",
+        disabled=bool(st.session_state.product_data))
 with col8:
-    sales_unit = st.text_input("销售单位", value=default_product.get("sales_unit", "克拉（CT）"), key="sales_unit")
+    sales_unit = st.text_input("销售单位", 
+        value=default_product.get("sales_unit", ""), 
+        key="sales_unit",
+        disabled=bool(st.session_state.product_data))
 
 col9, col10, col11, col12 = st.columns(4)
 with col9:
-    quantity = st.number_input(
-        "数量 (克拉)", 
+    quantity = st.number_input("数量 (克拉)", 
         value=float(default_product.get("quantity", 0)), 
         step=100.0,
         min_value=0.0,
         format="%.0f",
-        key="quantity"
-    )
+        key="quantity",
+        disabled=bool(st.session_state.product_data))
 with col10:
-    price_per_ct = st.number_input(
-        "采购单价 (￥/克拉)", 
+    price_per_ct = st.number_input("采购单价 (￥/克拉)", 
         value=float(default_product.get("price_per_ct", 0.0)), 
         step=1.0,
         min_value=0.0,
         format="%.2f",
-        key="price"
-    )
+        key="price",
+        disabled=bool(st.session_state.product_data))
 with col11:
-    package_unit = st.text_input("包装单位", value=default_product.get("package_unit", "纸箱（CARTON）"), key="package_unit")
+    package_unit = st.text_input("包装单位", 
+        value=default_product.get("package_unit", ""), 
+        key="package_unit",
+        disabled=bool(st.session_state.product_data))
 with col12:
-    unit_conversion = st.text_input("单位换算", value=default_product.get("unit_conversion", "1000CT/CARTON"), key="unit_conversion")
+    unit_conversion = st.text_input("单位换算", 
+        value=default_product.get("unit_conversion", ""), 
+        key="unit_conversion",
+        disabled=bool(st.session_state.product_data))
 
 col13, col14, col15, col16 = st.columns(4)
 with col13:
-    gross_weight = st.number_input(
-        "毛重 (KGS/纸箱)", 
-        value=float(default_product.get("gross_weight", 0.70)),
+    gross_weight = st.number_input("毛重 (KGS/纸箱)", 
+        value=float(default_product.get("gross_weight", 0.0)),
         format="%.2f",
         min_value=0.0,
         step=0.1,
-        key="gross_weight"
-    )
+        key="gross_weight",
+        disabled=bool(st.session_state.product_data))
 with col14:
-    net_weight = st.number_input(
-        "净重 (KGS/纸箱)", 
-        value=float(default_product.get("net_weight", 0.20)),
+    net_weight = st.number_input("净重 (KGS/纸箱)", 
+        value=float(default_product.get("net_weight", 0.0)),
         format="%.2f",
         min_value=0.0,
         step=0.1,
-        key="net_weight"
-    )
+        key="net_weight",
+        disabled=bool(st.session_state.product_data))
 with col15:
-    volume_per_pack = st.number_input(
-        "体积 (CBM/纸箱)", 
-        value=float(default_product.get("volume_per_pack", 0.0400)),
+    volume_per_pack = st.number_input("体积 (CBM/纸箱)", 
+        value=float(default_product.get("volume_per_pack", 0.0)),
         format="%.4f",
         min_value=0.0,
         step=0.001,
-        key="volume"
-    )
+        key="volume",
+        disabled=bool(st.session_state.product_data))
 with col16:
-    legal_unit = st.text_input("法定单位", value=default_product.get("legal_unit", "克拉（CT）"), key="legal_unit")
+    legal_unit = st.text_input("法定单位", 
+        value=default_product.get("legal_unit", ""), 
+        key="legal_unit",
+        disabled=bool(st.session_state.product_data))
 
-col17, col18, col19, col20 = st.columns(4)
-with col17:
-    customs_supervision = st.text_input("海关监管条件", value=default_product.get("customs_supervision", "无"), key="customs_supervision")
-with col18:
-    inspection_category = st.text_input("检验检疫类别", value=default_product.get("inspection_category", "无"), key="inspection_category")
-with col19:
-    transport_notes = st.text_input("运输说明", value=default_product.get("transport_notes", "无"), key="transport_notes")
-with col20:
-    description = st.text_input("商品描述", value=default_product.get("description", ""), key="description")
-
-st.markdown("---")
+# 如果有搜索结果，显示清除按钮
+if st.session_state.product_data:
+    if st.button("清除搜索结果", type="secondary"):
+        st.session_state.product_data = {}
+        st.session_state.product_fetched = False
+        st.rerun()
 
 # -------------------- 贸易术语 & 支付方式 --------------------
 st.markdown("### 📋 贸易术语 & 支付方式")
@@ -1593,6 +1641,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
