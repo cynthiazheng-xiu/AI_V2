@@ -1,5 +1,5 @@
 # app.py - AI价到 - 小微外贸智能报价助手 (表格版)
-
+import os
 import streamlit as st
 import pandas as pd
 import math
@@ -10,7 +10,12 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+BASE_DATA_PATH = "C:\\Basic Information"
+print(f"检查路径: {BASE_DATA_PATH}")
+print(f"路径是否存在: {os.path.exists(BASE_DATA_PATH)}")
 
+if os.path.exists(BASE_DATA_PATH):
+    print(f"目录中的文件: {os.listdir(BASE_DATA_PATH)}")
 # -------------------- 页面配置 - 必须放在最前面 --------------------
 st.set_page_config(
     page_title="AI价到 - 小微外贸智能出口报价助手",
@@ -1780,6 +1785,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
