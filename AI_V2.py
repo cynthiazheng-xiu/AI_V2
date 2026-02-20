@@ -6,7 +6,10 @@ import math
 import subprocess
 import os
 import time
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # -------------------- 页面配置 - 必须放在最前面 --------------------
 st.set_page_config(
@@ -15,6 +18,81 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# -------------------- 常量定义 --------------------
+BASE_DATA_PATH = "C:\\Basic Information"
+EXCEL_FILE = os.path.join(BASE_DATA_PATH, "Data.xlsx")
+CACHE_FILE = os.path.join(BASE_DATA_PATH, "cache.json")
+CACHE_DURATION = 24 * 60 * 60  # 24小时缓存时间（秒）
+
+# 工作表名称常量
+SHEET_PORTS = "港口信息表"
+SHEET_RATES = "汇率表"
+SHEET_HS = "HS表"
+SHEET_PRODUCTS = "商品信息表"
+SHEET_CUSTOMERS = "客户信息表"
+
+# 默认汇率（作为备用）
+DEFAULT_RATES = {
+    "USD": 6.9257, "EUR": 8.1863, "GBP": 9.3729, "JPY": 0.044775,
+    "HKD": 0.8858, "AUD": 4.9092, "CAD": 5.0734, "CHF": 8.9762, "SGD": 5.4721
+}
+
+# 集装箱参数表（根据提供的图片更新）
+CONTAINER_SPECS = {
+    # 普通集装箱
+    "20' GP": {"type": "普通", "code": "GP", "volume": 33, "weight": 25000, "tare": 2275},
+    "40' GP": {"type": "普通", "code": "GP", "volume": 67, "weight": 29000, "tare": 3760},
+    "40' HC": {"type": "普通", "code": "HC", "volume": 76, "weight": 29000, "tare": 3950},
+    # 冷冻集装箱
+    "20' RF": {"type": "冷冻", "code": "RF", "volume": 27, "weight": 21000, "tare": 2900},
+    "40' RF": {"type": "冷冻", "code": "RF", "volume": 58, "weight": 26000, "tare": 4330},
+    "40' RH": {"type": "冷冻", "code": "RH", "volume": 66, "weight": 26000, "tare": 4560}
+}
+
+# 简化的集装箱列表（用于运费设置）
+CONTAINER_TYPES = [
+    {"name": "20' GP", "display": "20' 普通", "volume": 33, "weight": 25000},
+    {"name": "40' GP", "display": "40' 普通", "volume": 67, "weight": 29000},
+    {"name": "40' HC", "display": "40' 高箱", "volume": 76, "weight": 29000},
+    {"name": "20' RF", "display": "20' 冷冻", "volume": 27, "weight": 21000},
+    {"name": "40' RF", "display": "40' 冷冻", "volume": 58, "weight": 26000},
+    {"name": "40' RH", "display": "40' 冷冻高箱", "volume": 66, "weight": 26000}
+]
+
+# 2020版国际贸易术语完整列表（简化版）
+INCOTERMS_2020 = [
+    {
+        "code": "EXW",
+        "name": "EXW (工厂交货)",
+        "full_name": "Ex Works",
+        "description": "卖方在其所在地或其他指定地点将货物交给买方处置时即完成交货。",
+        "responsibility_seller": "在指定地点提供货物",
+        "responsibility_buyer": "所有运输、保险、进出口清关",
+        "risk_transfer": "卖方将货物交给买方处置时",
+        "transport": "任何运输方式"
+    },
+    {
+        "code": "FOB",
+        "name": "FOB (船上交货)",
+        "full_name": "Free On Board",
+        "description": "卖方在指定装运港将货物装到买方指定的船上即完成交货。",
+        "responsibility_seller": "出口清关、将货物装上船",
+        "responsibility_buyer": "主运输、保险、进口清关",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    },
+    {
+        "code": "CIF",
+        "name": "CIF (成本、保险费加运费)",
+        "full_name": "Cost, Insurance and Freight",
+        "description": "卖方支付将货物运至指定目的港的运费和保险费。",
+        "responsibility_seller": "出口清关、将货物装上船、支付运费和保险费",
+        "responsibility_buyer": "进口清关、目的港卸货费",
+        "risk_transfer": "货物装上船时",
+        "transport": "海运和内河水运"
+    }
+]
 
 # -------------------- 自定义CSS样式 --------------------
 st.markdown("""
@@ -189,6 +267,23 @@ st.markdown("""
         color: #0A174E;
         font-size: 1.2rem;
     }
+    .refresh-button {
+        background-color: #FFD700;
+        color: #0A174E;
+        border: none;
+        padding: 0.25rem 1rem;
+        border-radius: 5px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .refresh-button:hover {
+        background-color: #FFA500;
+    }
+    .cache-info {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 0.25rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -201,158 +296,254 @@ def get_beijing_time():
 def format_beijing_time(format_str='%Y-%m-%d %H:%M:%S'):
     return get_beijing_time().strftime(format_str)
 
-# 国家港口映射
-country_port_map = {
-    "Chile": "San Antonio", "USA": "Los Angeles", "Germany": "Hamburg",
-    "Philippines": "Manila", "China": "Shanghai", "Japan": "Tokyo",
-    "UK": "Felixstowe", "France": "Le Havre", "Italy": "Genoa",
-    "Australia": "Sydney", "Brazil": "Santos", "India": "Mumbai"
-}
+# -------------------- 缓存管理函数 --------------------
+def load_cache():
+    """加载缓存数据"""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+            return cache
+        except:
+            return None
+    return None
 
-# 默认汇率
-DEFAULT_RATES = {
-    "USD": 6.9257, "EUR": 8.1863, "GBP": 9.3729, "JPY": 0.044775,
-    "HKD": 0.8858, "AUD": 4.9092, "CAD": 5.0734, "CHF": 8.9762, "SGD": 5.4721
-}
+def save_cache(data):
+    """保存数据到缓存"""
+    try:
+        # 确保目录存在
+        os.makedirs(BASE_DATA_PATH, exist_ok=True)
+        
+        cache_data = {
+            "timestamp": time.time(),
+            "data": data
+        }
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"保存缓存失败: {e}")
+        return False
 
-# 集装箱参数表
-CONTAINER_SPECS = {
-    "20'": {"volume": 33, "weight": 25000},
-    "40'": {"volume": 67, "weight": 29000},
-    "40'高": {"volume": 76, "weight": 29000}
-}
+def is_cache_valid():
+    """检查缓存是否在24小时内"""
+    if not os.path.exists(CACHE_FILE):
+        return False
+    
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache = json.load(f)
+        
+        cache_time = cache.get("timestamp", 0)
+        current_time = time.time()
+        
+        return (current_time - cache_time) < CACHE_DURATION
+    except:
+        return False
 
-# 2020版国际贸易术语完整列表（简化版）
-INCOTERMS_2020 = [
-    {
-        "code": "EXW",
-        "name": "EXW (工厂交货)",
-        "full_name": "Ex Works",
-        "description": "卖方在其所在地或其他指定地点将货物交给买方处置时即完成交货。",
-        "responsibility_seller": "在指定地点提供货物",
-        "responsibility_buyer": "所有运输、保险、进出口清关",
-        "risk_transfer": "卖方将货物交给买方处置时",
-        "transport": "任何运输方式"
-    },
-    {
-        "code": "FOB",
-        "name": "FOB (船上交货)",
-        "full_name": "Free On Board",
-        "description": "卖方在指定装运港将货物装到买方指定的船上即完成交货。",
-        "responsibility_seller": "出口清关、将货物装上船",
-        "responsibility_buyer": "主运输、保险、进口清关",
-        "risk_transfer": "货物装上船时",
-        "transport": "海运和内河水运"
-    },
-    {
-        "code": "CIF",
-        "name": "CIF (成本、保险费加运费)",
-        "full_name": "Cost, Insurance and Freight",
-        "description": "卖方支付将货物运至指定目的港的运费和保险费。",
-        "responsibility_seller": "出口清关、将货物装上船、支付运费和保险费",
-        "responsibility_buyer": "进口清关、目的港卸货费",
-        "risk_transfer": "货物装上船时",
-        "transport": "海运和内河水运"
+# -------------------- 从Excel加载所有数据 --------------------
+def load_all_data_from_excel(force_refresh=False):
+    """
+    从Excel文件加载所有数据
+    如果force_refresh=True，强制重新读取Excel，忽略缓存
+    """
+    
+    # 检查缓存（如果不是强制刷新）
+    if not force_refresh and is_cache_valid():
+        cache = load_cache()
+        if cache:
+            return cache["data"]
+    
+    # 默认数据结构
+    data = {
+        "ports": {},
+        "rates": DEFAULT_RATES.copy(),
+        "hs_info": {},
+        "customer": None,
+        "product": None,
+        "fetch_time": format_beijing_time(),
+        "file_exists": False
     }
-]
+    
+    # 检查Excel文件是否存在
+    if not os.path.exists(EXCEL_FILE):
+        st.warning(f"Excel文件不存在: {EXCEL_FILE}，将使用默认数据")
+        return data
+    
+    data["file_exists"] = True
+    
+    try:
+        # 读取所有工作表
+        excel_file = pd.ExcelFile(EXCEL_FILE)
+        
+        # ========== 1. 读取港口信息表 ==========
+        if SHEET_PORTS in excel_file.sheet_names:
+            df_ports = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_PORTS)
+            if not df_ports.empty:
+                ports_dict = {}
+                for _, row in df_ports.iterrows():
+                    if len(row) >= 2:
+                        country = str(row.iloc[0]).strip()
+                        port = str(row.iloc[1]).strip()
+                        if country and port:
+                            ports_dict[country] = port
+                data["ports"] = ports_dict
+        else:
+            st.warning(f"工作表 '{SHEET_PORTS}' 不存在，使用默认港口映射")
+        
+        # ========== 2. 读取汇率表 ==========
+        if SHEET_RATES in excel_file.sheet_names:
+            df_rates = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_RATES)
+            if not df_rates.empty:
+                rates_dict = DEFAULT_RATES.copy()
+                for _, row in df_rates.iterrows():
+                    if len(row) >= 3:
+                        currency = str(row.iloc[0]).strip()
+                        try:
+                            rate = float(row.iloc[2])  # 假设第三列是汇率值
+                            if currency in rates_dict:
+                                rates_dict[currency] = rate
+                        except:
+                            pass
+                data["rates"] = rates_dict
+                
+                # 记录发布时间和抓取时间（如果有）
+                if len(df_rates.columns) > 3:
+                    data["publish_time"] = str(df_rates.iloc[0, 3]) if pd.notna(df_rates.iloc[0, 3]) else "未知"
+                if len(df_rates.columns) > 4:
+                    data["fetch_time"] = str(df_rates.iloc[0, 4]) if pd.notna(df_rates.iloc[0, 4]) else format_beijing_time()
+        else:
+            st.warning(f"工作表 '{SHEET_RATES}' 不存在，使用默认汇率")
+        
+        # ========== 3. 读取HS信息表 ==========
+        if SHEET_HS in excel_file.sheet_names:
+            df_hs = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_HS)
+            if not df_hs.empty:
+                hs_dict = {}
+                for _, row in df_hs.iterrows():
+                    if len(row) >= 2:
+                        hs_code = str(row.iloc[0]).strip()
+                        hs_desc = str(row.iloc[1]).strip() if len(row) > 1 else ""
+                        if hs_code:
+                            hs_dict[hs_code] = {
+                                "description": hs_desc,
+                                "tax_rate": float(row.iloc[2]) if len(row) > 2 and pd.notna(row.iloc[2]) else 0,
+                                "supervision": str(row.iloc[3]) if len(row) > 3 and pd.notna(row.iloc[3]) else "无",
+                                "inspection": str(row.iloc[4]) if len(row) > 4 and pd.notna(row.iloc[4]) else "无"
+                            }
+                data["hs_info"] = hs_dict
+        else:
+            st.warning(f"工作表 '{SHEET_HS}' 不存在")
+        
+        # ========== 4. 读取客户信息表 ==========
+        if SHEET_CUSTOMERS in excel_file.sheet_names:
+            df_customers = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_CUSTOMERS)
+            if not df_customers.empty:
+                latest = df_customers.iloc[-1]
+                data["customer"] = {
+                    "customer_name": str(latest.iloc[0]) if len(df_customers.columns) > 0 and pd.notna(latest.iloc[0]) else "",
+                    "customer_rep": str(latest.iloc[1]) if len(df_customers.columns) > 1 and pd.notna(latest.iloc[1]) else "",
+                    "customer_country": str(latest.iloc[2]) if len(df_customers.columns) > 2 and pd.notna(latest.iloc[2]) else "",
+                    "customer_email": str(latest.iloc[3]) if len(df_customers.columns) > 3 and pd.notna(latest.iloc[3]) else "",
+                    "customer_address": str(latest.iloc[4]) if len(df_customers.columns) > 4 and pd.notna(latest.iloc[4]) else "",
+                    "payment_terms": str(latest.iloc[5]) if len(df_customers.columns) > 5 and pd.notna(latest.iloc[5]) else "",
+                    "fetch_time": str(latest.iloc[6]) if len(df_customers.columns) > 6 and pd.notna(latest.iloc[6]) else format_beijing_time()
+                }
+        else:
+            st.warning(f"工作表 '{SHEET_CUSTOMERS}' 不存在")
+        
+        # ========== 5. 读取商品信息表 ==========
+        if SHEET_PRODUCTS in excel_file.sheet_names:
+            df_products = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_PRODUCTS)
+            if not df_products.empty:
+                latest = df_products.iloc[-1]
+                data["product"] = {
+                    "product_code": str(latest.iloc[0]) if len(df_products.columns) > 0 and pd.notna(latest.iloc[0]) else "N003",
+                    "goods_type": str(latest.iloc[1]) if len(df_products.columns) > 1 and pd.notna(latest.iloc[1]) else "宝石或半宝石",
+                    "product_name": str(latest.iloc[2]) if len(df_products.columns) > 2 and pd.notna(latest.iloc[2]) else "蓝宝石",
+                    "product_name_en": str(latest.iloc[3]) if len(df_products.columns) > 3 and pd.notna(latest.iloc[3]) else "Sapphires",
+                    "specification_cn": str(latest.iloc[4]) if len(df_products.columns) > 4 and pd.notna(latest.iloc[4]) else "已加工，未镶嵌，天然，无等级，刚玉",
+                    "specification_en": str(latest.iloc[5]) if len(df_products.columns) > 5 and pd.notna(latest.iloc[5]) else "Processed,not inlaid,natural,no grade,corundum",
+                    "hs_code": str(latest.iloc[6]) if len(df_products.columns) > 6 and pd.notna(latest.iloc[6]) else "7103910000",
+                    "sales_unit": str(latest.iloc[7]) if len(df_products.columns) > 7 and pd.notna(latest.iloc[7]) else "克拉（CT）",
+                    "quantity": float(latest.iloc[8]) if len(df_products.columns) > 8 and pd.notna(latest.iloc[8]) else 0,
+                    "price_per_ct": float(latest.iloc[9]) if len(df_products.columns) > 9 and pd.notna(latest.iloc[9]) else 0,
+                    "package_unit": str(latest.iloc[10]) if len(df_products.columns) > 10 and pd.notna(latest.iloc[10]) else "纸箱（CARTON）",
+                    "unit_conversion": str(latest.iloc[11]) if len(df_products.columns) > 11 and pd.notna(latest.iloc[11]) else "1000CT/CARTON",
+                    "gross_weight": float(latest.iloc[12]) if len(df_products.columns) > 12 and pd.notna(latest.iloc[12]) else 0.70,
+                    "net_weight": float(latest.iloc[13]) if len(df_products.columns) > 13 and pd.notna(latest.iloc[13]) else 0.20,
+                    "volume_per_pack": float(latest.iloc[14]) if len(df_products.columns) > 14 and pd.notna(latest.iloc[14]) else 0.0400,
+                    "legal_unit": str(latest.iloc[15]) if len(df_products.columns) > 15 and pd.notna(latest.iloc[15]) else "克拉（CT）",
+                    "customs_supervision": str(latest.iloc[16]) if len(df_products.columns) > 16 and pd.notna(latest.iloc[16]) else "无",
+                    "inspection_category": str(latest.iloc[17]) if len(df_products.columns) > 17 and pd.notna(latest.iloc[17]) else "无",
+                    "transport_notes": str(latest.iloc[18]) if len(df_products.columns) > 18 and pd.notna(latest.iloc[18]) else "无",
+                    "description": str(latest.iloc[19]) if len(df_products.columns) > 19 and pd.notna(latest.iloc[19]) else "",
+                    "fetch_time": str(latest.iloc[20]) if len(df_products.columns) > 20 and pd.notna(latest.iloc[20]) else format_beijing_time()
+                }
+        else:
+            st.warning(f"工作表 '{SHEET_PRODUCTS}' 不存在")
+        
+        # 保存到缓存
+        save_cache(data)
+        
+    except Exception as e:
+        st.error(f"读取Excel文件时出错: {e}")
+    
+    return data
 
-# -------------------- 数据加载函数 --------------------
-def load_rates_from_excel():
-    """从PAD生成的Excel文件加载汇率数据"""
-    excel_path = "C:\\ExchangeRates\\rates.xlsx"
-    rates = DEFAULT_RATES.copy()
-    rate_info = {
-        "rates": rates,
-        "publish_time": "未知",
-        "fetch_time": "未知",
-        "file_exists": False,
-        "file_time": None
+# -------------------- 手动刷新数据函数 --------------------
+def refresh_all_data():
+    """手动刷新所有数据"""
+    with st.spinner("正在从Excel重新加载数据..."):
+        data = load_all_data_from_excel(force_refresh=True)
+        
+        # 更新session state
+        if "ports" in data:
+            st.session_state.ports = data["ports"]
+        
+        if "rates" in data:
+            st.session_state.exchange_rates = data["rates"]
+        
+        if "customer" in data and data["customer"]:
+            st.session_state.customer_data = data["customer"]
+            st.session_state.customer_fetched = True
+        
+        if "product" in data and data["product"]:
+            st.session_state.product_data = data["product"]
+            st.session_state.product_fetched = True
+        
+        if "hs_info" in data:
+            st.session_state.hs_info = data["hs_info"]
+        
+        st.session_state.last_refresh_time = format_beijing_time()
+        st.session_state.data_source = "Excel" if data.get("file_exists") else "默认数据"
+        
+        st.success(f"数据刷新完成！")
+        time.sleep(1)
+        st.rerun()
+
+# -------------------- 辅助函数：国家港口映射 --------------------
+def get_country_port_map():
+    """获取国家港口映射（优先使用Excel数据）"""
+    if "ports" in st.session_state and st.session_state.ports:
+        return st.session_state.ports
+    
+    # 默认映射（作为备用）
+    return {
+        "Chile": "San Antonio", "USA": "Los Angeles", "Germany": "Hamburg",
+        "Philippines": "Manila", "China": "Shanghai", "Japan": "Tokyo",
+        "UK": "Felixstowe", "France": "Le Havre", "Italy": "Genoa",
+        "Australia": "Sydney", "Brazil": "Santos", "India": "Mumbai"
     }
-    if os.path.exists(excel_path):
-        try:
-            df = pd.read_excel(excel_path)
-            mod_time = os.path.getmtime(excel_path)
-            mod_time_beijing = datetime.fromtimestamp(mod_time) + timedelta(hours=8)
-            rate_info["file_time"] = mod_time_beijing.strftime('%Y-%m-%d %H:%M:%S')
-            rate_info["file_exists"] = True
-            for index, row in df.iterrows():
-                currency_code = str(row.iloc[0]).strip()
-                rate_value = row.iloc[2]
-                if currency_code in rates:
-                    try:
-                        rates[currency_code] = float(rate_value)
-                    except:
-                        pass
-            if len(df) > 0:
-                rate_info["publish_time"] = str(df.iloc[0, 3]) if pd.notna(df.iloc[0, 3]) else "未知"
-                rate_info["fetch_time"] = str(df.iloc[0, 4]) if pd.notna(df.iloc[0, 4]) else "未知"
-            rate_info["rates"] = rates
-        except Exception as e:
-            st.error(f"读取汇率文件时出错: {e}")
-    return rate_info
 
-def load_customer_data_from_excel():
-    """从PAD抓取的客户数据Excel加载"""
-    excel_path = "C:\\PAD_Data\\customers.xlsx"
-    if os.path.exists(excel_path):
-        try:
-            df = pd.read_excel(excel_path)
-            if len(df) > 0:
-                latest = df.iloc[-1]
-                return {
-                    "success": True,
-                    "data": {
-                        "customer_name": str(latest.iloc[0]) if pd.notna(latest.iloc[0]) else "",
-                        "customer_rep": str(latest.iloc[1]) if pd.notna(latest.iloc[1]) else "",
-                        "customer_country": str(latest.iloc[2]) if pd.notna(latest.iloc[2]) else "",
-                        "customer_email": str(latest.iloc[3]) if pd.notna(latest.iloc[3]) else "",
-                        "customer_address": str(latest.iloc[4]) if pd.notna(latest.iloc[4]) else "",
-                        "payment_terms": str(latest.iloc[5]) if pd.notna(latest.iloc[5]) else "",
-                        "fetch_time": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else format_beijing_time()
-                    }
-                }
-        except Exception as e:
-            st.error(f"读取客户数据失败: {e}")
-    return {"success": False, "data": None}
+# -------------------- 辅助函数：获取HS信息 --------------------
+def get_hs_info(hs_code):
+    """根据HS编码获取详细信息"""
+    if "hs_info" in st.session_state and hs_code in st.session_state.hs_info:
+        return st.session_state.hs_info[hs_code]
+    return None
 
-def load_product_data_from_excel():
-    """从PAD抓取的商品数据Excel加载"""
-    excel_path = "C:\\PAD_Data\\products.xlsx"
-    if os.path.exists(excel_path):
-        try:
-            df = pd.read_excel(excel_path)
-            if len(df) > 0:
-                latest = df.iloc[-1]
-                return {
-                    "success": True,
-                    "data": {
-                        "product_code": str(latest.iloc[0]) if len(df.columns) > 0 and pd.notna(latest.iloc[0]) else "N003",
-                        "goods_type": str(latest.iloc[1]) if len(df.columns) > 1 and pd.notna(latest.iloc[1]) else "宝石或半宝石",
-                        "product_name": str(latest.iloc[2]) if len(df.columns) > 2 and pd.notna(latest.iloc[2]) else "蓝宝石",
-                        "product_name_en": str(latest.iloc[3]) if len(df.columns) > 3 and pd.notna(latest.iloc[3]) else "Sapphires",
-                        "specification_cn": str(latest.iloc[4]) if len(df.columns) > 4 and pd.notna(latest.iloc[4]) else "已加工，未镶嵌，天然，无等级，刚玉",
-                        "specification_en": str(latest.iloc[5]) if len(df.columns) > 5 and pd.notna(latest.iloc[5]) else "Processed,not inlaid,natural,no grade,corundum",
-                        "hs_code": str(latest.iloc[6]) if len(df.columns) > 6 and pd.notna(latest.iloc[6]) else "7103910000",
-                        "sales_unit": str(latest.iloc[7]) if len(df.columns) > 7 and pd.notna(latest.iloc[7]) else "克拉（CT）",
-                        "quantity": float(latest.iloc[8]) if len(df.columns) > 8 and pd.notna(latest.iloc[8]) else 0,
-                        "price_per_ct": float(latest.iloc[9]) if len(df.columns) > 9 and pd.notna(latest.iloc[9]) else 0,
-                        "package_unit": str(latest.iloc[10]) if len(df.columns) > 10 and pd.notna(latest.iloc[10]) else "纸箱（CARTON）",
-                        "unit_conversion": str(latest.iloc[11]) if len(df.columns) > 11 and pd.notna(latest.iloc[11]) else "1000CT/CARTON",
-                        "gross_weight": float(latest.iloc[12]) if len(df.columns) > 12 and pd.notna(latest.iloc[12]) else 0.70,
-                        "net_weight": float(latest.iloc[13]) if len(df.columns) > 13 and pd.notna(latest.iloc[13]) else 0.20,
-                        "volume_per_pack": float(latest.iloc[14]) if len(df.columns) > 14 and pd.notna(latest.iloc[14]) else 0.0400,
-                        "legal_unit": str(latest.iloc[15]) if len(df.columns) > 15 and pd.notna(latest.iloc[15]) else "克拉（CT）",
-                        "customs_supervision": str(latest.iloc[16]) if len(df.columns) > 16 and pd.notna(latest.iloc[16]) else "无",
-                        "inspection_category": str(latest.iloc[17]) if len(df.columns) > 17 and pd.notna(latest.iloc[17]) else "无",
-                        "transport_notes": str(latest.iloc[18]) if len(df.columns) > 18 and pd.notna(latest.iloc[18]) else "无",
-                        "description": str(latest.iloc[19]) if len(df.columns) > 19 and pd.notna(latest.iloc[19]) else "",
-                        "fetch_time": str(latest.iloc[20]) if len(df.columns) > 20 and pd.notna(latest.iloc[20]) else format_beijing_time()
-                    }
-                }
-        except Exception as e:
-            st.error(f"读取商品数据失败: {e}")
-    return {"success": False, "data": None}
-
+# -------------------- 运行PAD流程函数 --------------------
 def run_pad_flow(flow_name):
     """调用Power Automate Desktop运行指定流程"""
     try:
@@ -366,7 +557,8 @@ def run_pad_flow(flow_name):
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-def calculate_shipping_options(total_volume, total_weight, freight_20, freight_40, freight_40hq, lcl_rate_cbm, lcl_rate_kg):
+# -------------------- 计算运输方案函数 --------------------
+def calculate_shipping_options(total_volume, total_weight, freight_rates, lcl_rate_cbm, lcl_rate_kg):
     """
     根据总体积和总重量计算所有可能的运输方案
     1. LCL方案：取体积计费和重量计费的较大值
@@ -399,88 +591,72 @@ def calculate_shipping_options(total_volume, total_weight, freight_20, freight_4
     })
     
     # ========== 方案2: 整箱运输 ==========
-    container_types = [
-        {"name": "20'", "volume": 33, "weight": 25000, "freight": freight_20},
-        {"name": "40'", "volume": 67, "weight": 29000, "freight": freight_40},
-        {"name": "40'高", "volume": 76, "weight": 29000, "freight": freight_40hq}
-    ]
+    # 获取所有集装箱类型（排除LCL）
+    container_list = []
+    for container_name, spec in CONTAINER_SPECS.items():
+        if container_name in freight_rates:
+            container_list.append({
+                "name": container_name,
+                "display": f"{container_name} ({spec['type']})",
+                "volume": spec["volume"],
+                "weight": spec["weight"],
+                "freight": freight_rates[container_name]
+            })
     
-    # 计算所需集装箱的最大数量（向上取整）
-    max_20_by_volume = math.ceil(total_volume / 33)
-    max_20_by_weight = math.ceil(total_weight / 25000)
-    max_20 = max(max_20_by_volume, max_20_by_weight)
+    # 如果没有设置任何集装箱运费，返回仅LCL方案
+    if not container_list:
+        return options, 0
     
-    max_40_by_volume = math.ceil(total_volume / 67)
-    max_40_by_weight = math.ceil(total_weight / 29000)
-    max_40 = max(max_40_by_volume, max_40_by_weight)
-    
-    max_40hq_by_volume = math.ceil(total_volume / 76)
-    max_40hq_by_weight = math.ceil(total_weight / 29000)
-    max_40hq = max(max_40hq_by_volume, max_40hq_by_weight)
+    # 计算所需集装箱的最大数量（向上取整）- 取所有类型中的最大值
+    max_containers = 0
+    for container in container_list:
+        by_volume = math.ceil(total_volume / container["volume"])
+        by_weight = math.ceil(total_weight / container["weight"])
+        max_for_type = max(by_volume, by_weight)
+        max_containers = max(max_containers, max_for_type)
     
     # 限制搜索范围，避免组合爆炸
-    max_containers = min(max(max_20, max_40, max_40hq), 5)  # 最多搜索到5个柜子
+    max_containers = min(max_containers, 5)  # 最多搜索到5个柜子
     
-    # 遍历所有可能的组合
+    # 生成所有可能的组合
+    # 简化：只考虑单一类型组合，因为混合类型计算太复杂
     fcl_options = []
     
-    for num_20 in range(max_containers + 1):
-        for num_40 in range(max_containers + 1):
-            for num_40hq in range(max_containers + 1):
-                # 跳过全零组合
-                if num_20 == 0 and num_40 == 0 and num_40hq == 0:
-                    continue
+    # 单一类型组合
+    for container in container_list:
+        for num in range(1, max_containers + 1):
+            total_container_volume = num * container["volume"]
+            total_container_weight = num * container["weight"]
+            
+            if total_container_volume >= total_volume and total_container_weight >= total_weight:
+                container_cost = num * container["freight"]
                 
-                # 计算总容量
-                total_container_volume = num_20 * 33 + num_40 * 67 + num_40hq * 76
-                total_container_weight = num_20 * 25000 + num_40 * 29000 + num_40hq * 29000
+                # 计算利用率
+                volume_utilization = (total_volume / total_container_volume) * 100
+                weight_utilization = (total_weight / total_container_weight) * 100
                 
-                # 检查是否满足体积和重量要求
-                if total_container_volume >= total_volume and total_container_weight >= total_weight:
-                    # 计算集装箱总费用
-                    container_cost = num_20 * freight_20 + num_40 * freight_40 + num_40hq * freight_40hq
-                    
-                    # 计算利用率
-                    volume_utilization = (total_volume / total_container_volume) * 100
-                    weight_utilization = (total_weight / total_container_weight) * 100
-                    
-                    # 构建方案名称
-                    containers_desc = []
-                    if num_20 > 0:
-                        containers_desc.append(f"{num_20}×20'")
-                    if num_40 > 0:
-                        containers_desc.append(f"{num_40}×40'")
-                    if num_40hq > 0:
-                        containers_desc.append(f"{num_40hq}×40'高")
-                    
-                    scheme_name = " + ".join(containers_desc)
-                    
-                    # 计算剩余空间
-                    remaining_volume = total_container_volume - total_volume
-                    remaining_weight = total_container_weight - total_weight
-                    
-                    fcl_options.append({
-                        "name": scheme_name,
-                        "description": f"{scheme_name} - 体积利用率: {volume_utilization:.1f}%, 重量利用率: {weight_utilization:.1f}%",
-                        "type": "fcl",
-                        "containers": {"20'": num_20, "40'": num_40, "40'高": num_40hq},
-                        "cost_usd": container_cost,
-                        "volume_utilization": volume_utilization,
-                        "weight_utilization": weight_utilization,
-                        "remaining_volume": remaining_volume,
-                        "remaining_weight": remaining_weight,
-                        "details": f"总运费: ${container_cost:,.2f} | 剩余体积: {remaining_volume:.1f}CBM | 剩余重量: {remaining_weight:.1f}KG"
-                    })
-    
-    # 去重（基于方案名称和成本）
-    unique_fcl = {}
-    for opt in fcl_options:
-        key = f"{opt['name']}_{opt['cost_usd']:.2f}"
-        if key not in unique_fcl:
-            unique_fcl[key] = opt
+                # 构建方案名称
+                scheme_name = f"{num}×{container['name']}"
+                
+                # 计算剩余空间
+                remaining_volume = total_container_volume - total_volume
+                remaining_weight = total_container_weight - total_weight
+                
+                fcl_options.append({
+                    "name": scheme_name,
+                    "description": f"{scheme_name} - 体积利用率: {volume_utilization:.1f}%, 重量利用率: {weight_utilization:.1f}%",
+                    "type": "fcl",
+                    "container_type": container['name'],
+                    "container_count": num,
+                    "cost_usd": container_cost,
+                    "volume_utilization": volume_utilization,
+                    "weight_utilization": weight_utilization,
+                    "remaining_volume": remaining_volume,
+                    "remaining_weight": remaining_weight,
+                    "details": f"总运费: ${container_cost:,.2f} | 剩余体积: {remaining_volume:.1f}CBM | 剩余重量: {remaining_weight:.1f}KG"
+                })
     
     # 按成本排序
-    fcl_options = list(unique_fcl.values())
     fcl_options.sort(key=lambda x: x["cost_usd"])
     
     # 添加整箱方案到总方案列表
@@ -518,20 +694,51 @@ if 'document_fee' not in st.session_state:
     st.session_state.document_fee = 300.0
 if 'insurance_rate' not in st.session_state:
     st.session_state.insurance_rate = 0.3
-if 'freight_20' not in st.session_state:
-    st.session_state.freight_20 = 1200.0
-if 'freight_40' not in st.session_state:
-    st.session_state.freight_40 = 1800.0
-if 'freight_40hq' not in st.session_state:
-    st.session_state.freight_40hq = 2000.0
+if 'freight_rates' not in st.session_state:
+    # 初始化所有集装箱类型的运费
+    st.session_state.freight_rates = {
+        "20' GP": 1200.0,
+        "40' GP": 1800.0,
+        "40' HC": 2000.0,
+        "20' RF": 2500.0,
+        "40' RF": 3500.0,
+        "40' RH": 3800.0
+    }
 if 'lcl_rate_cbm' not in st.session_state:
     st.session_state.lcl_rate_cbm = 50.0   # LCL(M) 按体积费率 (USD/CBM)
 if 'lcl_rate_kg' not in st.session_state:
     st.session_state.lcl_rate_kg = 2000.0  # LCL(W) 按重量费率 (USD/吨)
+if 'ports' not in st.session_state:
+    st.session_state.ports = {}
+if 'hs_info' not in st.session_state:
+    st.session_state.hs_info = {}
+if 'last_refresh_time' not in st.session_state:
+    st.session_state.last_refresh_time = "从未刷新"
+if 'data_source' not in st.session_state:
+    st.session_state.data_source = "默认数据"
 
-# 加载汇率数据
-rate_info = load_rates_from_excel()
-exchange_rates = rate_info["rates"]
+# 初始化加载数据
+if 'exchange_rates' not in st.session_state:
+    # 首次加载，尝试从Excel读取
+    data = load_all_data_from_excel()
+    st.session_state.exchange_rates = data.get("rates", DEFAULT_RATES)
+    st.session_state.ports = data.get("ports", {})
+    st.session_state.hs_info = data.get("hs_info", {})
+    
+    if data.get("customer"):
+        st.session_state.customer_data = data["customer"]
+        st.session_state.customer_fetched = True
+    
+    if data.get("product"):
+        st.session_state.product_data = data["product"]
+        st.session_state.product_fetched = True
+    
+    if data.get("file_exists"):
+        st.session_state.data_source = "Excel"
+    else:
+        st.session_state.data_source = "默认数据"
+    
+    st.session_state.last_refresh_time = format_beijing_time()
 
 # ==================== 页面内容开始 ====================
 
@@ -543,8 +750,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 第一行：PAD抓取按钮和北京时间
-col_pad1, col_pad2, col_pad3, col_pad4 = st.columns(4)
+# 第一行：PAD抓取按钮和刷新按钮
+col_pad1, col_pad2, col_pad3, col_pad4, col_refresh = st.columns([2,2,2,2,1])
+
 with col_pad1:
     if st.button("🤖 抓取客户信息 (PAD)", use_container_width=True):
         with st.spinner("正在启动Power Automate Desktop抓取客户信息..."):
@@ -552,15 +760,11 @@ with col_pad1:
             if result["success"]:
                 st.success(result["message"])
                 time.sleep(3)
-                customer_result = load_customer_data_from_excel()
-                if customer_result["success"]:
-                    st.session_state.customer_data = customer_result["data"]
-                    st.session_state.customer_fetched = True
-                    st.rerun()
-                else:
-                    st.warning("未找到客户数据文件，请确保PAD流程已正确运行")
+                # 手动刷新数据
+                refresh_all_data()
             else:
                 st.error(f"启动失败: {result['message']}")
+
 with col_pad2:
     if st.button("📦 抓取商品信息 (PAD)", use_container_width=True):
         with st.spinner("正在启动Power Automate Desktop抓取商品信息..."):
@@ -568,15 +772,11 @@ with col_pad2:
             if result["success"]:
                 st.success(result["message"])
                 time.sleep(3)
-                product_result = load_product_data_from_excel()
-                if product_result["success"]:
-                    st.session_state.product_data = product_result["data"]
-                    st.session_state.product_fetched = True
-                    st.rerun()
-                else:
-                    st.warning("未找到商品数据文件，请确保PAD流程已正确运行")
+                # 手动刷新数据
+                refresh_all_data()
             else:
                 st.error(f"启动失败: {result['message']}")
+
 with col_pad3:
     if st.button("📊 刷新汇率 (PAD)", use_container_width=True):
         with st.spinner("正在启动Power Automate Desktop更新汇率..."):
@@ -584,11 +784,27 @@ with col_pad3:
             if result["success"]:
                 st.success(result["message"])
                 time.sleep(2)
-                st.rerun()
+                # 手动刷新数据
+                refresh_all_data()
             else:
                 st.error(f"启动失败: {result['message']}")
+
 with col_pad4:
     st.markdown(f"<div style='text-align: center; padding: 0.5rem; background-color: #e9ecef; border-radius: 5px;'>🕒 {format_beijing_time()}</div>", unsafe_allow_html=True)
+
+with col_refresh:
+    if st.button("🔄 刷新", use_container_width=True, type="secondary"):
+        refresh_all_data()
+
+# 显示数据源状态
+col_status1, col_status2 = st.columns(2)
+with col_status1:
+    if st.session_state.data_source == "Excel":
+        st.success(f"✅ 数据源: {st.session_state.data_source}")
+    else:
+        st.warning(f"⚠️ 数据源: {st.session_state.data_source}")
+with col_status2:
+    st.info(f"🕐 最后刷新: {st.session_state.last_refresh_time}")
 
 st.markdown("---")
 
@@ -596,30 +812,37 @@ st.markdown("---")
 with st.sidebar:
     st.markdown('<p class="sidebar-header">💱 汇率</p>', unsafe_allow_html=True)
     # 汇率状态
-    if rate_info["file_exists"]:
-        st.markdown("✅ <span class='status-badge status-success'>PAD汇率数据已连接</span>", unsafe_allow_html=True)
+    if st.session_state.data_source == "Excel":
+        st.markdown("✅ <span class='status-badge status-success'>Excel数据已连接</span>", unsafe_allow_html=True)
     else:
         st.markdown("⚠️ <span class='status-badge status-warning'>使用默认汇率</span>", unsafe_allow_html=True)
-    st.caption(f"牌价时间: {rate_info['publish_time']}")
-    st.caption(f"抓取时间: {rate_info['fetch_time']}")
     
     # 货币选择
-    available_currencies = list(exchange_rates.keys())
+    available_currencies = list(st.session_state.exchange_rates.keys())
     target_currency = st.selectbox("报价货币", available_currencies, 
                                   index=available_currencies.index(st.session_state.selected_currency) 
                                   if st.session_state.selected_currency in available_currencies else 0,
                                   key="sidebar_currency")
     st.session_state.selected_currency = target_currency
-    current_rate = exchange_rates[target_currency]
+    current_rate = st.session_state.exchange_rates[target_currency]
     st.metric(f"1 {target_currency} = ", f"{current_rate:.4f} CNY")
     
     st.markdown("---")
     
     st.markdown('<p class="sidebar-header">📋 HS编码信息</p>', unsafe_allow_html=True)
     hs_code_display = st.session_state.product_data.get("hs_code", "未获取") if st.session_state.product_fetched else "未填写"
-    st.text_input("HS编码", value=hs_code_display, disabled=True, key="hs_code_sidebar")
-    st.markdown("**海关总署查询** [点击访问](http://www.customs.gov.cn)")
-    st.checkbox("是否享受优惠税率", key="preferential_tax")
+    
+    # 如果有HS信息，显示详细信息
+    hs_info = get_hs_info(hs_code_display)
+    if hs_info:
+        st.text_input("HS编码", value=hs_code_display, disabled=True, key="hs_code_sidebar")
+        st.text_area("商品描述", value=hs_info.get("description", ""), disabled=True, height=60)
+        st.metric("退税率", f"{hs_info.get('tax_rate', 0)}%")
+        st.text_input("监管条件", value=hs_info.get("supervision", "无"), disabled=True)
+        st.text_input("检验检疫", value=hs_info.get("inspection", "无"), disabled=True)
+    else:
+        st.text_input("HS编码", value=hs_code_display, disabled=True, key="hs_code_sidebar")
+        st.info("无详细HS信息")
     
     st.markdown("---")
     
@@ -630,44 +853,34 @@ with st.sidebar:
     <div class="container-table">
         <table>
             <tr>
-                <th>类型</th>
-                <th>最大体积(CBM)</th>
-                <th>最大重量(KG)</th>
+                <th>箱型</th>
+                <th>代码</th>
+                <th>体积(CBM)</th>
+                <th>重量(KGS)</th>
+                <th>自重(KGS)</th>
             </tr>
-            <tr>
-                <td>LCL(M)</td>
-                <td>-</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>LCL(W)</td>
-                <td>-</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>20'</td>
-                <td>33</td>
-                <td>25000</td>
-            </tr>
-            <tr>
-                <td>40'</td>
-                <td>67</td>
-                <td>29000</td>
-            </tr>
-            <tr>
-                <td>40'高</td>
-                <td>76</td>
-                <td>29000</td>
-            </tr>
-        </table>
-    </div>
     """, unsafe_allow_html=True)
+    
+    for name, spec in CONTAINER_SPECS.items():
+        st.markdown(f"""
+            <tr>
+                <td>{name}</td>
+                <td>{spec['code']}</td>
+                <td>{spec['volume']}</td>
+                <td>{spec['weight']}</td>
+                <td>{spec['tare']}</td>
+            </tr>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("</table></div>", unsafe_allow_html=True)
     
     col_from, col_to = st.columns(2)
     with col_from:
         departure_port = st.text_input("起运港", value="Shanghai", key="departure_port")
     with col_to:
-        default_dest = country_port_map.get(st.session_state.customer_data.get("customer_country", ""), "")
+        # 使用从Excel加载的港口映射
+        port_map = get_country_port_map()
+        default_dest = port_map.get(st.session_state.customer_data.get("customer_country", ""), "")
         destination_port = st.text_input("目的港", value=default_dest, key="destination_port")
     
     st.markdown("**集装箱运费估算 (USD)**")
@@ -676,29 +889,26 @@ with st.sidebar:
     st.markdown("""
     <table class="freight-table">
         <tr>
-            <th>类型</th>
+            <th>箱型</th>
             <th>运费 (USD)</th>
         </tr>
     """, unsafe_allow_html=True)
     
-    # 使用columns布局来创建可编辑的表格
-    col_f1, col_f2 = st.columns([1, 1])
-    with col_f1:
-        st.markdown("**20'**")
-    with col_f2:
-        freight_20 = st.number_input("", value=float(st.session_state.freight_20), step=50.0, key="freight_20_input", label_visibility="collapsed")
+    # 使用可编辑的运费设置
+    freight_rates = st.session_state.freight_rates.copy()
     
-    col_f3, col_f4 = st.columns([1, 1])
-    with col_f3:
-        st.markdown("**40'**")
-    with col_f4:
-        freight_40 = st.number_input("", value=float(st.session_state.freight_40), step=50.0, key="freight_40_input", label_visibility="collapsed")
-    
-    col_f5, col_f6 = st.columns([1, 1])
-    with col_f5:
-        st.markdown("**40'高**")
-    with col_f6:
-        freight_40hq = st.number_input("", value=float(st.session_state.freight_40hq), step=50.0, key="freight_40hq_input", label_visibility="collapsed")
+    for container in CONTAINER_TYPES:
+        col_f1, col_f2 = st.columns([1, 1])
+        with col_f1:
+            st.markdown(f"**{container['display']}**")
+        with col_f2:
+            freight_rates[container['name']] = st.number_input(
+                "", 
+                value=float(freight_rates.get(container['name'], 1200.0)), 
+                step=50.0, 
+                key=f"freight_{container['name']}", 
+                label_visibility="collapsed"
+            )
     
     st.markdown("**LCL散货费率**")
     st.caption("LCL运费 = max(体积×LCL(M)单价, 重量×LCL(W)单价)")
@@ -716,9 +926,7 @@ with st.sidebar:
         lcl_rate_kg = st.number_input("", value=float(st.session_state.lcl_rate_kg), step=100.0, key="lcl_rate_kg_input", label_visibility="collapsed")
     
     if st.button("更新运费设置", key="update_freight"):
-        st.session_state.freight_20 = freight_20
-        st.session_state.freight_40 = freight_40
-        st.session_state.freight_40hq = freight_40hq
+        st.session_state.freight_rates = freight_rates
         st.session_state.lcl_rate_cbm = lcl_rate_cbm
         st.session_state.lcl_rate_kg = lcl_rate_kg
         st.success("运费设置已更新")
@@ -740,9 +948,9 @@ with col_left:
 with col_right:
     st.markdown("### 👥 客户信息")
     if st.session_state.customer_fetched:
-        st.success("✅ 已从PAD抓取客户数据")
+        st.success("✅ 已从Excel加载客户数据")
     else:
-        st.info("⏳ 可点击上方抓取按钮获取")
+        st.info("⏳ 可点击上方抓取按钮获取或手动输入")
     default_customer = st.session_state.customer_data if st.session_state.customer_data else {}
     
     col_cust1, col_cust2 = st.columns(2)
@@ -758,17 +966,19 @@ with col_right:
             value=default_customer.get("customer_rep", ""), 
             key="customer_rep_input"
         )
+        # 使用从Excel加载的港口映射
+        port_map = get_country_port_map()
+        countries = list(port_map.keys())
         country_index = 0
-        if default_customer.get("customer_country") and default_customer["customer_country"] in country_port_map:
-            countries = list(country_port_map.keys())
+        if default_customer.get("customer_country") and default_customer["customer_country"] in countries:
             country_index = countries.index(default_customer["customer_country"])
         country = st.selectbox(
             "目的国家", 
-            list(country_port_map.keys()), 
+            countries, 
             index=country_index, 
             key="customer_country_input"
         )
-        port = country_port_map.get(country, "San Antonio")
+        port = port_map.get(country, "")
         st.text_input("目的港口", value=port, disabled=True, key="customer_port_input")
     
     with col_cust2:
@@ -799,7 +1009,7 @@ st.markdown("---")
 # -------------------- 商品信息 --------------------
 st.markdown("### 💎 商品信息")
 if st.session_state.product_fetched:
-    st.success("✅ 已从PAD抓取商品数据")
+    st.success("✅ 已从Excel加载商品数据")
 else:
     st.info("⏳ 可点击上方抓取按钮获取或手动输入")
 
@@ -920,7 +1130,7 @@ with col_btn1:
 st.markdown("### 📊 出口预算表")
 
 # 获取当前汇率
-current_exchange_rate = exchange_rates[st.session_state.selected_currency]
+current_exchange_rate = st.session_state.exchange_rates[st.session_state.selected_currency]
 
 if calculate_pressed:
     if quantity > 0 and price_per_ct > 0:
@@ -948,9 +1158,7 @@ if calculate_pressed:
         shipping_options, best_index = calculate_shipping_options(
             total_volume, 
             total_gross_weight,
-            st.session_state.freight_20,
-            st.session_state.freight_40,
-            st.session_state.freight_40hq,
+            st.session_state.freight_rates,
             st.session_state.lcl_rate_cbm,
             st.session_state.lcl_rate_kg
         )
@@ -998,7 +1206,7 @@ if calculate_pressed:
         st.warning("请填写商品数量和单价")
 
 # 显示预算表
-if st.session_state.budget:
+if 'budget' in st.session_state and st.session_state.budget:
     b = st.session_state.budget
     
     # 显示货运信息表格
@@ -1098,11 +1306,12 @@ with st.sidebar:
 # -------------------- 底部版权 --------------------
 col_footer1, col_footer2, col_footer3 = st.columns(3)
 with col_footer1:
-    st.markdown(f"© 2026 {company_name}")
+    st.markdown(f"© 2026 {company_name if 'company_name' in locals() else 'ABC International Trading CO. Ltd'}")
 with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
-    st.markdown("PAD数据源: 阿里巴巴国际站")
+    st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
