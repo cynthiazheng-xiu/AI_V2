@@ -860,10 +860,14 @@ if 'freight_rates' not in st.session_state:
         "40'RF": 3500.0,
         "40'RH": 3800.0
     }
-if 'lcl_rate_cbm' not in st.session_state:
-    st.session_state.lcl_rate_cbm = 50.0   # LCL(M) 按体积费率 (USD/CBM)
-if 'lcl_rate_kg' not in st.session_state:
-    st.session_state.lcl_rate_kg = 2000.0  # LCL(W) 按重量费率 (USD/吨)
+if 'lcl_rate_cbm_normal' not in st.session_state:
+    st.session_state.lcl_rate_cbm_normal = 50.0   # 普柜LCL(M) 按体积费率 (USD/CBM)
+if 'lcl_rate_kg_normal' not in st.session_state:
+    st.session_state.lcl_rate_kg_normal = 2000.0  # 普柜LCL(W) 按重量费率 (USD/吨)
+if 'lcl_rate_cbm_frozen' not in st.session_state:
+    st.session_state.lcl_rate_cbm_frozen = 75.0   # 冻柜LCL(M) 按体积费率 (USD/CBM)
+if 'lcl_rate_kg_frozen' not in st.session_state:
+    st.session_state.lcl_rate_kg_frozen = 3000.0  # 冻柜LCL(W) 按重量费率 (USD/吨)
 if 'ports' not in st.session_state:
     st.session_state.ports = {}
 if 'hs_info' not in st.session_state:
@@ -1024,32 +1028,6 @@ with st.sidebar:
     
     st.markdown('<p class="sidebar-header">🚢 物流信息</p>', unsafe_allow_html=True)
     
-    # 显示集装箱参数表
-    st.markdown("""
-    <div class="container-table">
-        <table>
-            <tr>
-                <th>箱型</th>
-                <th>代码</th>
-                <th>体积(CBM)</th>
-                <th>重量(KGS)</th>
-                <th>自重(KGS)</th>
-            </tr>
-    """, unsafe_allow_html=True)
-    
-    for name, spec in CONTAINER_SPECS.items():
-        st.markdown(f"""
-            <tr>
-                <td>{name}</td>
-                <td>{spec['code']}</td>
-                <td>{spec['volume']}</td>
-                <td>{spec['weight']}</td>
-                <td>{spec['tare']}</td>
-            </tr>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("</table></div>", unsafe_allow_html=True)
-    
     col_from, col_to = st.columns(2)
     with col_from:
         departure_port = st.text_input("起运港", value="Shanghai", key="departure_port")
@@ -1059,44 +1037,160 @@ with st.sidebar:
         default_dest = port_map.get(st.session_state.customer_data.get("customer_country", ""), "")
         destination_port = st.text_input("目的港", value=default_dest, key="destination_port")
     
-    st.markdown("**集装箱运费估算 (USD)**")
+    st.markdown("### 运费设置")
     
-    # 创建运费估算表格
-    # 使用可编辑的运费设置
-    freight_rates = st.session_state.freight_rates.copy()
+    # 创建运费设置表格
+    st.markdown("""
+    <style>
+    .freight-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+    }
+    .freight-table th {
+        background-color: #0A174E;
+        color: white;
+        padding: 8px;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+    .freight-table td {
+        padding: 5px;
+        border: 1px solid #dee2e6;
+        text-align: center;
+    }
+    .freight-table .section-header {
+        background-color: #f0f2f6;
+        font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    for container in CONTAINER_TYPES:
-        col_f1, col_f2 = st.columns([1, 1])
-        with col_f1:
-            st.markdown(f"**{container['display']}**")
-        with col_f2:
-            freight_rates[container['name']] = st.number_input(
-                "", 
-                value=float(freight_rates.get(container['name'], 1200.0)), 
-                step=50.0, 
-                key=f"freight_{container['name']}", 
-                label_visibility="collapsed"
-            )
+    # 普柜运费表格
+    st.markdown("#### 普柜")
     
-    st.markdown("**LCL散货费率**")
-    st.caption("LCL运费 = max(体积×LCL(M)单价, 重量×LCL(W)单价)")
+    # 使用st.columns创建表格效果
+    col_header1, col_header2, col_header3 = st.columns([2, 1, 1])
+    with col_header1:
+        st.markdown("**类型**")
+    with col_header2:
+        st.markdown("**单价**")
+    with col_header3:
+        st.markdown("**单位**")
     
-    col_l1, col_l2 = st.columns([1, 1])
-    with col_l1:
-        st.markdown("**LCL(M) (USD/CBM)**")
-    with col_l2:
-        lcl_rate_cbm = st.number_input("", value=float(st.session_state.lcl_rate_cbm), step=5.0, key="lcl_rate_cbm_input", label_visibility="collapsed")
+    # LCL(M) 普柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("LCL(M)")
+    with col2:
+        lcl_rate_cbm_normal = st.number_input("", value=float(st.session_state.lcl_rate_cbm_normal), step=5.0, key="lcl_rate_cbm_normal", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD/CBM")
     
-    col_l3, col_l4 = st.columns([1, 1])
-    with col_l3:
-        st.markdown("**LCL(W) (USD/吨)**")
-    with col_l4:
-        lcl_rate_kg = st.number_input("", value=float(st.session_state.lcl_rate_kg), step=100.0, key="lcl_rate_kg_input", label_visibility="collapsed")
+    # LCL(W) 普柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("LCL(W)")
+    with col2:
+        lcl_rate_kg_normal = st.number_input("", value=float(st.session_state.lcl_rate_kg_normal), step=100.0, key="lcl_rate_kg_normal", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD/吨")
     
-    if st.button("更新运费设置", key="update_freight"):
-        st.session_state.freight_rates = freight_rates
-        st.session_state.lcl_rate_cbm = lcl_rate_cbm
-        st.session_state.lcl_rate_kg = lcl_rate_kg
+    # 20'普柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("20'")
+    with col2:
+        freight_20_normal = st.number_input("", value=float(st.session_state.freight_rates.get("20'GP", 1200.0)), step=50.0, key="freight_20_normal", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    # 40'普柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("40'")
+    with col2:
+        freight_40_normal = st.number_input("", value=float(st.session_state.freight_rates.get("40'GP", 1800.0)), step=50.0, key="freight_40_normal", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    # 40'高普柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("40'高")
+    with col2:
+        freight_40hc_normal = st.number_input("", value=float(st.session_state.freight_rates.get("40'HC", 2000.0)), step=50.0, key="freight_40hc_normal", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    st.markdown("---")
+    
+    # 冻柜运费表格
+    st.markdown("#### 冻柜")
+    
+    # LCL(M) 冻柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("LCL(M)")
+    with col2:
+        lcl_rate_cbm_frozen = st.number_input("", value=float(st.session_state.lcl_rate_cbm_frozen), step=5.0, key="lcl_rate_cbm_frozen", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD/CBM")
+    
+    # LCL(W) 冻柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("LCL(W)")
+    with col2:
+        lcl_rate_kg_frozen = st.number_input("", value=float(st.session_state.lcl_rate_kg_frozen), step=100.0, key="lcl_rate_kg_frozen", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD/吨")
+    
+    # 20'冻柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("20'")
+    with col2:
+        freight_20_frozen = st.number_input("", value=float(st.session_state.freight_rates.get("20'RF", 2500.0)), step=50.0, key="freight_20_frozen", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    # 40'冻柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("40'")
+    with col2:
+        freight_40_frozen = st.number_input("", value=float(st.session_state.freight_rates.get("40'RF", 3500.0)), step=50.0, key="freight_40_frozen", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    # 40'高冻柜
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("40'高")
+    with col2:
+        freight_40rh_frozen = st.number_input("", value=float(st.session_state.freight_rates.get("40'RH", 3800.0)), step=50.0, key="freight_40rh_frozen", label_visibility="collapsed")
+    with col3:
+        st.markdown("USD")
+    
+    # 更新运费设置按钮
+    if st.button("更新运费设置", key="update_freight", use_container_width=True):
+        # 更新普柜运费
+        st.session_state.freight_rates["20'GP"] = freight_20_normal
+        st.session_state.freight_rates["40'GP"] = freight_40_normal
+        st.session_state.freight_rates["40'HC"] = freight_40hc_normal
+        
+        # 更新冻柜运费
+        st.session_state.freight_rates["20'RF"] = freight_20_frozen
+        st.session_state.freight_rates["40'RF"] = freight_40_frozen
+        st.session_state.freight_rates["40'RH"] = freight_40rh_frozen
+        
+        # 更新LCL费率
+        st.session_state.lcl_rate_cbm_normal = lcl_rate_cbm_normal
+        st.session_state.lcl_rate_kg_normal = lcl_rate_kg_normal
+        st.session_state.lcl_rate_cbm_frozen = lcl_rate_cbm_frozen
+        st.session_state.lcl_rate_kg_frozen = lcl_rate_kg_frozen
+        
         st.success("运费设置已更新")
         st.rerun()
     
@@ -1499,6 +1593,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
