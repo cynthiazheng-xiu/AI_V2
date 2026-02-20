@@ -129,10 +129,11 @@ st.markdown("""
         padding: 12px;
         text-align: left;
         font-weight: bold;
+        border: 1px solid #1D2B5E;
     }
     .budget-table td {
         padding: 10px;
-        border-bottom: 1px solid #dee2e6;
+        border: 1px solid #dee2e6;
     }
     .budget-table tr:nth-child(even) {
         background-color: #f8f9fa;
@@ -144,9 +145,15 @@ st.markdown("""
         background-color: #FFD700 !important;
         font-weight: bold;
     }
+    .budget-total td {
+        background-color: #FFD700;
+    }
     .budget-highlight {
         background-color: #d4edda !important;
         font-weight: bold;
+    }
+    .budget-highlight td {
+        background-color: #d4edda;
     }
     .section-header {
         background-color: #f0f2f6;
@@ -261,6 +268,13 @@ st.markdown("""
     .refresh-button:hover {
         background-color: #FFA500;
     }
+    .file-status {
+        background-color: #e9ecef;
+        padding: 0.5rem;
+        border-radius: 5px;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -318,6 +332,31 @@ def is_cache_valid():
     except:
         return False
 
+# -------------------- 检查Excel文件 --------------------
+def check_excel_file():
+    """检查Excel文件是否存在并返回详细信息"""
+    file_info = {
+        "exists": False,
+        "path": EXCEL_FILE,
+        "size": 0,
+        "modified": "",
+        "sheets": []
+    }
+    
+    if os.path.exists(EXCEL_FILE):
+        file_info["exists"] = True
+        file_info["size"] = os.path.getsize(EXCEL_FILE)
+        mod_time = os.path.getmtime(EXCEL_FILE)
+        file_info["modified"] = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
+        
+        try:
+            excel_file = pd.ExcelFile(EXCEL_FILE)
+            file_info["sheets"] = excel_file.sheet_names
+        except:
+            file_info["sheets"] = ["无法读取工作表"]
+    
+    return file_info
+
 # -------------------- 从Excel加载所有数据 --------------------
 def load_all_data_from_excel(force_refresh=False):
     """
@@ -346,8 +385,6 @@ def load_all_data_from_excel(force_refresh=False):
     
     # 检查Excel文件是否存在
     if not os.path.exists(EXCEL_FILE):
-        st.warning(f"⚠️ Excel文件不存在: {EXCEL_FILE}")
-        st.info("请确认文件路径: C:\\Basic Information\\Data.xlsx")
         return data
     
     data["file_exists"] = True
@@ -368,8 +405,6 @@ def load_all_data_from_excel(force_refresh=False):
                         if country and port and country != 'nan' and port != 'nan':
                             ports_dict[country] = port
                 data["ports"] = ports_dict
-        else:
-            pass
         
         # ========== 2. 读取汇率表 ==========
         if SHEET_RATES in excel_file.sheet_names:
@@ -657,7 +692,7 @@ def calculate_shipping_options(total_volume, total_weight, freight_rates, lcl_ra
 
 # -------------------- 显示出口预算表函数 --------------------
 def display_budget_table(budget, selected_term, exchange_rate, selected_currency):
-    """按照附件3的格式显示出口预算表"""
+    """按照附件3的格式显示出口预算表 - 3列表格"""
     
     html = """
     <table class="budget-table">
@@ -672,7 +707,7 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
     html += f"""
         <tr>
             <td><strong>1. 采购成本</strong></td>
-            <td>含税购入价</td>
+            <td>含税收入价</td>
             <td style="text-align: right">{budget.get('采购成本', 0):,.2f}</td>
         </tr>
     """
@@ -689,72 +724,34 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
     # 3. 国内费用
     html += f"""
         <tr>
-            <td rowspan="9"><strong>3. 国内费用</strong></td>
-            <td>出口内陆运费</td>
-            <td style="text-align: right">{budget.get('内陆运费', 0):,.2f}</td>
+            <td rowspan="3"><strong>3. 国内费用</strong></td>
+            <td>出口国内运费</td>
+            <td style="text-align: right">{budget.get('内陆运费', 6348.89):,.2f}</td>
         </tr>
         <tr>
             <td>国际运费</td>
-            <td style="text-align: right">{budget.get('海运费', 0):,.2f}</td>
+            <td style="text-align: right">{budget.get('海运费', 13.85):,.2f}</td>
         </tr>
         <tr>
-            <td>出口货代杂费</td>
-            <td style="text-align: right">{budget.get('货代杂费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td>出口商检费</td>
-            <td style="text-align: right">{budget.get('商检费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td>检验检疫证书费</td>
-            <td style="text-align: right">{budget.get('证书费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td>出口报关费</td>
-            <td style="text-align: right">{budget.get('报关费', 41.04):,.2f}</td>
-        </tr>
-        <tr>
-            <td>出口关税</td>
-            <td style="text-align: right">{budget.get('出口关税', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td>产地证书费</td>
-            <td style="text-align: right">{budget.get('产地证费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td>保险费</td>
-            <td style="text-align: right">{budget.get('保险费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td></td>
-            <td><strong>合计</strong></td>
-            <td style="text-align: right"><strong>{budget.get('国内费用合计', 0):,.2f}</strong></td>
+            <td>合计</td>
+            <td style="text-align: right">{budget.get('国内费用合计', 0):,.2f}</td>
         </tr>
     """
     
     # 4. 银行费用
     html += f"""
         <tr>
-            <td rowspan="3"><strong>4. 银行费用</strong></td>
-            <td>托收费用</td>
-            <td style="text-align: right">{budget.get('托收费', 0):,.2f}</td>
-        </tr>
-        <tr>
+            <td rowspan="2"><strong>4. 银行费用</strong></td>
             <td>信用证费用</td>
             <td style="text-align: right">{budget.get('信用证费', 969.40):,.2f}</td>
         </tr>
         <tr>
-            <td>其他费用</td>
-            <td style="text-align: right">{budget.get('其他银行费', 0):,.2f}</td>
-        </tr>
-        <tr>
-            <td></td>
-            <td><strong>合计</strong></td>
-            <td style="text-align: right"><strong>{budget.get('银行费用合计', 0):,.2f}</strong></td>
+            <td>合计</td>
+            <td style="text-align: right">{budget.get('银行费用合计', 969.40):,.2f}</td>
         </tr>
     """
     
-    # 5. 其他费用（如果需要）
+    # 5. 其他费用
     html += f"""
         <tr>
             <td><strong>5. 其他费用</strong></td>
@@ -763,7 +760,11 @@ def display_budget_table(budget, selected_term, exchange_rate, selected_currency
         </tr>
     """
     
-    # 6. 总成本
+    # 6 = 1-2+3+4+5
+    total = (budget.get('采购成本', 0) - budget.get('出口退税', 0) + 
+             budget.get('国内费用合计', 0) + budget.get('银行费用合计', 0) + 
+             budget.get('其他费用', 0))
+    
     html += f"""
         <tr class="budget-total">
             <td><strong>6 = 1-2+3+4+5</strong></td>
@@ -825,7 +826,7 @@ if 'document_fee' not in st.session_state:
 if 'insurance_rate' not in st.session_state:
     st.session_state.insurance_rate = 0.3
 if 'inland_freight' not in st.session_state:
-    st.session_state.inland_freight = 6348.89  # 出口内陆运费
+    st.session_state.inland_freight = 6348.89  # 出口国内运费
 if 'forwarder_fee' not in st.session_state:
     st.session_state.forwarder_fee = 1587.22  # 出口货代杂费
 if 'inspection_fee_detail' not in st.session_state:
@@ -909,6 +910,17 @@ st.markdown("""
     <div class="subtitle">智能报价 · 精准计算 · 一键成交</div>
 </div>
 """, unsafe_allow_html=True)
+
+# 检查Excel文件状态
+file_info = check_excel_file()
+if file_info["exists"]:
+    st.success(f"✅ 找到Excel文件: {file_info['path']}")
+    st.info(f"📁 文件大小: {file_info['size']} bytes | 修改时间: {file_info['modified']}")
+    if file_info["sheets"]:
+        st.info(f"📊 工作表: {', '.join(file_info['sheets'])}")
+else:
+    st.warning(f"⚠️ Excel文件不存在: {EXCEL_FILE}")
+    st.info("请确认文件路径是否正确，或使用默认数据")
 
 # 第一行：PAD抓取按钮和刷新按钮
 col_pad1, col_pad2, col_pad3, col_pad4, col_refresh = st.columns([2,2,2,2,1])
@@ -1047,14 +1059,6 @@ with st.sidebar:
     st.markdown("**集装箱运费估算 (USD)**")
     
     # 创建运费估算表格
-    st.markdown("""
-    <table class="freight-table">
-        <tr>
-            <th>箱型</th>
-            <th>运费 (USD)</th>
-        </tr>
-    """, unsafe_allow_html=True)
-    
     # 使用可编辑的运费设置
     freight_rates = st.session_state.freight_rates.copy()
     
@@ -1335,25 +1339,17 @@ if calculate_pressed:
         freight_usd = best_option["cost_usd"]
         freight_cny = freight_usd * exchange_rate
         
-        # 国内费用明细
-        domestic_fee_total = (st.session_state.handling_fee + st.session_state.inspection_fee + 
-                             st.session_state.document_fee + st.session_state.inland_freight +
-                             st.session_state.forwarder_fee + st.session_state.inspection_fee_detail +
-                             st.session_state.certificate_fee + st.session_state.customs_declare_fee +
-                             st.session_state.export_tariff + st.session_state.origin_cert_fee)
+        # 国内费用合计（只包括出口国内运费和国际运费）
+        domestic_fee_total = st.session_state.inland_freight + freight_cny
         
-        # 保险费 (按附件3的金额示例)
-        insurance_fee = total_cost_cny * (st.session_state.insurance_rate / 100)
-        
-        # 银行费用合计
-        bank_fee_total = st.session_state.collection_fee + st.session_state.lc_fee + st.session_state.other_bank_fee
+        # 银行费用合计（只包括信用证费用）
+        bank_fee_total = st.session_state.lc_fee
         
         # 出口退税
         tax_refund = total_cost_cny * (tax_rate / 100)
         
-        # 总成本 = 采购成本 - 退税 + 国内费用 + 银行费用 + 其他费用 + 海运费 + 保险费
-        total_cost_with_freight = (total_cost_cny - tax_refund + domestic_fee_total + 
-                                   bank_fee_total + st.session_state.other_fee + freight_cny + insurance_fee)
+        # 总成本 = 采购成本 - 退税 + 国内费用 + 银行费用
+        total_cost_with_freight = total_cost_cny - tax_refund + domestic_fee_total + bank_fee_total
         
         # 对外报价 (基于利润率)
         quoted_price_target = total_cost_target * (1 + profit_margin/100)
@@ -1368,19 +1364,10 @@ if calculate_pressed:
             "出口退税": tax_refund,
             "内陆运费": st.session_state.inland_freight,
             "海运费": freight_cny,
-            "货代杂费": st.session_state.forwarder_fee,
-            "商检费": st.session_state.inspection_fee_detail,
-            "证书费": st.session_state.certificate_fee,
-            "报关费": st.session_state.customs_declare_fee,
-            "出口关税": st.session_state.export_tariff,
-            "产地证费": st.session_state.origin_cert_fee,
-            "保险费": insurance_fee,
             "国内费用合计": domestic_fee_total,
-            "托收费": st.session_state.collection_fee,
             "信用证费": st.session_state.lc_fee,
-            "其他银行费": st.session_state.other_bank_fee,
             "银行费用合计": bank_fee_total,
-            "其他费用": st.session_state.other_fee,
+            "其他费用": 0,
             "总成本": total_cost_with_freight,
             "对外报价": quoted_price_target,
             "对外报价CNY": quoted_price_cny,
@@ -1492,6 +1479,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
