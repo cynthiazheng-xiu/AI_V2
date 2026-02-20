@@ -21,9 +21,18 @@ st.set_page_config(
 
 # -------------------- 常量定义 --------------------
 BASE_DATA_PATH = "C:\\Basic Information"
-EXCEL_FILE = os.path.join(BASE_DATA_PATH, "Data.xlsx")
+EXCEL_FILE_XLSX = os.path.join(BASE_DATA_PATH, "Data.xlsx")
+EXCEL_FILE_XLS = os.path.join(BASE_DATA_PATH, "Data.xls")
 CACHE_FILE = os.path.join(BASE_DATA_PATH, "cache.json")
 CACHE_DURATION = 24 * 60 * 60  # 24小时缓存时间（秒）
+
+# 确定实际存在的文件
+if os.path.exists(EXCEL_FILE_XLSX):
+    EXCEL_FILE = EXCEL_FILE_XLSX
+elif os.path.exists(EXCEL_FILE_XLS):
+    EXCEL_FILE = EXCEL_FILE_XLS
+else:
+    EXCEL_FILE = EXCEL_FILE_XLSX  # 默认使用xlsx
 
 # 工作表名称常量
 SHEET_PORTS = "港口信息表"
@@ -38,7 +47,7 @@ DEFAULT_RATES = {
     "HKD": 0.8858, "AUD": 4.9092, "CAD": 5.0734, "CHF": 8.9762, "SGD": 5.4721
 }
 
-# 集装箱参数表
+# 集装箱参数表（用于后台计算）
 CONTAINER_SPECS = {
     # 普通集装箱
     "20'GP": {"type": "普通", "code": "GP", "volume": 33, "weight": 25000, "tare": 2275, "display": "20' 普通"},
@@ -276,6 +285,27 @@ st.markdown("""
         margin-bottom: 0.5rem;
         font-size: 0.9rem;
     }
+    .freight-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+    }
+    .freight-table th {
+        background-color: #0A174E;
+        color: white;
+        padding: 8px;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+    .freight-table td {
+        padding: 5px;
+        border: 1px solid #dee2e6;
+        text-align: center;
+    }
+    .freight-table .section-header {
+        background-color: #f0f2f6;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -344,17 +374,22 @@ def check_excel_file():
         "sheets": []
     }
     
-    if os.path.exists(EXCEL_FILE):
-        file_info["exists"] = True
-        file_info["size"] = os.path.getsize(EXCEL_FILE)
-        mod_time = os.path.getmtime(EXCEL_FILE)
-        file_info["modified"] = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
-        
-        try:
-            excel_file = pd.ExcelFile(EXCEL_FILE)
-            file_info["sheets"] = excel_file.sheet_names
-        except:
-            file_info["sheets"] = ["无法读取工作表"]
+    # 同时检查两种扩展名
+    possible_files = [EXCEL_FILE_XLSX, EXCEL_FILE_XLS]
+    for file_path in possible_files:
+        if os.path.exists(file_path):
+            file_info["exists"] = True
+            file_info["path"] = file_path
+            file_info["size"] = os.path.getsize(file_path)
+            mod_time = os.path.getmtime(file_path)
+            file_info["modified"] = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
+            
+            try:
+                excel_file = pd.ExcelFile(file_path)
+                file_info["sheets"] = excel_file.sheet_names
+            except:
+                file_info["sheets"] = ["无法读取工作表"]
+            break
     
     return file_info
 
@@ -381,22 +416,30 @@ def load_all_data_from_excel(force_refresh=False):
         "fetch_time": format_beijing_time(),
         "file_exists": False,
         "publish_time": "未知",
-        "fetch_time_excel": "未知"
+        "fetch_time_excel": "未知",
+        "file_path": None
     }
     
-    # 检查Excel文件是否存在
-    if not os.path.exists(EXCEL_FILE):
+    # 检查Excel文件是否存在（同时检查两种扩展名）
+    excel_file_path = None
+    if os.path.exists(EXCEL_FILE_XLSX):
+        excel_file_path = EXCEL_FILE_XLSX
+    elif os.path.exists(EXCEL_FILE_XLS):
+        excel_file_path = EXCEL_FILE_XLS
+    
+    if not excel_file_path:
         return data
     
     data["file_exists"] = True
+    data["file_path"] = excel_file_path
     
     try:
         # 读取所有工作表
-        excel_file = pd.ExcelFile(EXCEL_FILE)
+        excel_file = pd.ExcelFile(excel_file_path)
         
         # ========== 1. 读取港口信息表 ==========
         if SHEET_PORTS in excel_file.sheet_names:
-            df_ports = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_PORTS)
+            df_ports = pd.read_excel(excel_file_path, sheet_name=SHEET_PORTS)
             if not df_ports.empty:
                 ports_dict = {}
                 for _, row in df_ports.iterrows():
@@ -409,7 +452,7 @@ def load_all_data_from_excel(force_refresh=False):
         
         # ========== 2. 读取汇率表 ==========
         if SHEET_RATES in excel_file.sheet_names:
-            df_rates = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_RATES)
+            df_rates = pd.read_excel(excel_file_path, sheet_name=SHEET_RATES)
             if not df_rates.empty:
                 rates_dict = DEFAULT_RATES.copy()
                 for _, row in df_rates.iterrows():
@@ -431,7 +474,7 @@ def load_all_data_from_excel(force_refresh=False):
         
         # ========== 3. 读取HS信息表 ==========
         if SHEET_HS in excel_file.sheet_names:
-            df_hs = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_HS)
+            df_hs = pd.read_excel(excel_file_path, sheet_name=SHEET_HS)
             if not df_hs.empty:
                 hs_dict = {}
                 for _, row in df_hs.iterrows():
@@ -449,7 +492,7 @@ def load_all_data_from_excel(force_refresh=False):
         
         # ========== 4. 读取客户信息表 ==========
         if SHEET_CUSTOMERS in excel_file.sheet_names:
-            df_customers = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_CUSTOMERS)
+            df_customers = pd.read_excel(excel_file_path, sheet_name=SHEET_CUSTOMERS)
             if not df_customers.empty:
                 latest = df_customers.iloc[-1]
                 data["customer"] = {
@@ -464,7 +507,7 @@ def load_all_data_from_excel(force_refresh=False):
         
         # ========== 5. 读取商品信息表 ==========
         if SHEET_PRODUCTS in excel_file.sheet_names:
-            df_products = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_PRODUCTS)
+            df_products = pd.read_excel(excel_file_path, sheet_name=SHEET_PRODUCTS)
             if not df_products.empty:
                 latest = df_products.iloc[-1]
                 data["product"] = {
@@ -566,6 +609,90 @@ def run_pad_flow(flow_name):
             return {"success": True, "message": f"模拟运行成功"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+# -------------------- 从Excel查找商品信息 --------------------
+def search_product_from_excel(search_term, search_by="code"):
+    """
+    根据商品编号或英文名称从Excel查找商品信息
+    search_by: "code" 或 "name"
+    """
+    if not os.path.exists(EXCEL_FILE):
+        st.warning(f"Excel文件不存在: {EXCEL_FILE}")
+        return None
+    
+    try:
+        # 读取商品信息表
+        df = pd.read_excel(EXCEL_FILE, sheet_name=SHEET_PRODUCTS)
+        if df.empty:
+            st.warning("商品信息表为空")
+            return None
+        
+        st.info(f"正在搜索: {search_term} (方式: {search_by})")
+        st.info(f"数据表共有 {len(df)} 行数据")
+        
+        # 根据搜索条件查找
+        result = None
+        if search_by == "code":
+            # 按商品编号查找（假设商品编号在第1列）
+            for index, row in df.iterrows():
+                cell_value = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+                if cell_value == str(search_term).strip():
+                    result = row
+                    st.success(f"在第 {index+2} 行找到匹配的商品编号: {cell_value}")
+                    break
+        elif search_by == "name":
+            # 按英文名称查找（假设英文名称在第4列）
+            for index, row in df.iterrows():
+                cell_value = str(row.iloc[3]).strip().lower() if pd.notna(row.iloc[3]) else ""
+                if cell_value == str(search_term).strip().lower():
+                    result = row
+                    st.success(f"在第 {index+2} 行找到匹配的英文名称: {row.iloc[3]}")
+                    break
+        
+        if result is not None:
+            # 返回找到的商品信息
+            product_info = {
+                "product_code": str(result.iloc[0]) if len(df.columns) > 0 and pd.notna(result.iloc[0]) else "",
+                "goods_type": str(result.iloc[1]) if len(df.columns) > 1 and pd.notna(result.iloc[1]) else "",
+                "product_name": str(result.iloc[2]) if len(df.columns) > 2 and pd.notna(result.iloc[2]) else "",
+                "product_name_en": str(result.iloc[3]) if len(df.columns) > 3 and pd.notna(result.iloc[3]) else "",
+                "specification_cn": str(result.iloc[4]) if len(df.columns) > 4 and pd.notna(result.iloc[4]) else "",
+                "specification_en": str(result.iloc[5]) if len(df.columns) > 5 and pd.notna(result.iloc[5]) else "",
+                "hs_code": str(result.iloc[6]) if len(df.columns) > 6 and pd.notna(result.iloc[6]) else "",
+                "sales_unit": str(result.iloc[7]) if len(df.columns) > 7 and pd.notna(result.iloc[7]) else "",
+                "quantity": float(result.iloc[8]) if len(df.columns) > 8 and pd.notna(result.iloc[8]) else 0,
+                "price_per_ct": float(result.iloc[9]) if len(df.columns) > 9 and pd.notna(result.iloc[9]) else 0,
+                "package_unit": str(result.iloc[10]) if len(df.columns) > 10 and pd.notna(result.iloc[10]) else "",
+                "unit_conversion": str(result.iloc[11]) if len(df.columns) > 11 and pd.notna(result.iloc[11]) else "",
+                "gross_weight": float(result.iloc[12]) if len(df.columns) > 12 and pd.notna(result.iloc[12]) else 0,
+                "net_weight": float(result.iloc[13]) if len(df.columns) > 13 and pd.notna(result.iloc[13]) else 0,
+                "volume_per_pack": float(result.iloc[14]) if len(df.columns) > 14 and pd.notna(result.iloc[14]) else 0,
+                "legal_unit": str(result.iloc[15]) if len(df.columns) > 15 and pd.notna(result.iloc[15]) else "",
+                "customs_supervision": str(result.iloc[16]) if len(df.columns) > 16 and pd.notna(result.iloc[16]) else "",
+                "inspection_category": str(result.iloc[17]) if len(df.columns) > 17 and pd.notna(result.iloc[17]) else "",
+                "transport_notes": str(result.iloc[18]) if len(df.columns) > 18 and pd.notna(result.iloc[18]) else "",
+                "description": str(result.iloc[19]) if len(df.columns) > 19 and pd.notna(result.iloc[19]) else ""
+            }
+            return product_info
+        else:
+            st.warning(f"未找到匹配的商品信息: {search_term}")
+            return None
+    except Exception as e:
+        st.error(f"查找商品信息时出错: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+        return None
+
+# -------------------- 运行PAD查找商品函数 --------------------
+def run_pad_search_product(search_term, search_by):
+    """模拟运行PAD查找商品（实际直接从Excel查找）"""
+    with st.spinner(f"正在从Excel查找商品: {search_term}..."):
+        time.sleep(1)  # 模拟查找过程
+        product_info = search_product_from_excel(search_term, search_by)
+        if product_info:
+            return {"success": True, "data": product_info, "message": "找到商品信息"}
+        else:
+            return {"success": False, "message": "未找到匹配的商品信息"}
 
 # -------------------- 计算运输方案函数 --------------------
 def calculate_shipping_options(total_volume, total_weight, freight_rates, lcl_rate_cbm, lcl_rate_kg):
@@ -868,6 +995,10 @@ if 'lcl_rate_cbm_frozen' not in st.session_state:
     st.session_state.lcl_rate_cbm_frozen = 75.0   # 冻柜LCL(M) 按体积费率 (USD/CBM)
 if 'lcl_rate_kg_frozen' not in st.session_state:
     st.session_state.lcl_rate_kg_frozen = 3000.0  # 冻柜LCL(W) 按重量费率 (USD/吨)
+if 'lcl_rate_cbm' not in st.session_state:
+    st.session_state.lcl_rate_cbm = 50.0
+if 'lcl_rate_kg' not in st.session_state:
+    st.session_state.lcl_rate_kg = 2000.0
 if 'ports' not in st.session_state:
     st.session_state.ports = {}
 if 'hs_info' not in st.session_state:
@@ -921,12 +1052,23 @@ st.markdown("""
 # 检查Excel文件状态
 file_info = check_excel_file()
 if file_info["exists"]:
-    st.success(f"✅ 找到Excel文件: C:\\Basic Information\\Data.xlsx")
+    st.success(f"✅ 找到Excel文件: {file_info['path']}")
     st.info(f"📁 文件大小: {file_info['size']} bytes | 修改时间: {file_info['modified']}")
     if file_info["sheets"]:
         st.info(f"📊 工作表: {', '.join(file_info['sheets'])}")
+        
+    # 添加调试信息 - 显示工作表内容
+    with st.expander("查看Excel工作表内容"):
+        try:
+            excel_file = pd.ExcelFile(file_info['path'])
+            for sheet in excel_file.sheet_names:
+                st.write(f"**{sheet}**")
+                df = pd.read_excel(file_info['path'], sheet_name=sheet, nrows=5)  # 只显示前5行
+                st.dataframe(df)
+        except Exception as e:
+            st.error(f"读取工作表失败: {e}")
 else:
-    st.error(f"⚠️ Excel文件不存在: C:\\Basic Information\\Data.xlsx")
+    st.error(f"⚠️ Excel文件不存在: C:\\Basic Information\\Data.xlsx 或 C:\\Basic Information\\Data.xls")
     st.info("请确认文件路径是否正确，或使用默认数据")
 
 # 第一行：PAD抓取按钮和刷新按钮
@@ -1038,33 +1180,6 @@ with st.sidebar:
         destination_port = st.text_input("目的港", value=default_dest, key="destination_port")
     
     st.markdown("### 运费设置")
-    
-    # 创建运费设置表格
-    st.markdown("""
-    <style>
-    .freight-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 1rem;
-    }
-    .freight-table th {
-        background-color: #0A174E;
-        color: white;
-        padding: 8px;
-        text-align: center;
-        font-size: 0.9rem;
-    }
-    .freight-table td {
-        padding: 5px;
-        border: 1px solid #dee2e6;
-        text-align: center;
-    }
-    .freight-table .section-header {
-        background-color: #f0f2f6;
-        font-weight: bold;
-    }
-    </style>
-    """, unsafe_allow_html=True)
     
     # 普柜运费表格
     st.markdown("#### 普柜")
@@ -1408,12 +1523,36 @@ with col16:
         key="legal_unit",
         disabled=bool(st.session_state.product_data))
 
+col17, col18, col19, col20 = st.columns(4)
+with col17:
+    customs_supervision = st.text_input("海关监管条件", 
+        value=default_product.get("customs_supervision", ""), 
+        key="customs_supervision",
+        disabled=bool(st.session_state.product_data))
+with col18:
+    inspection_category = st.text_input("检验检疫类别", 
+        value=default_product.get("inspection_category", ""), 
+        key="inspection_category",
+        disabled=bool(st.session_state.product_data))
+with col19:
+    transport_notes = st.text_input("运输说明", 
+        value=default_product.get("transport_notes", ""), 
+        key="transport_notes",
+        disabled=bool(st.session_state.product_data))
+with col20:
+    description = st.text_input("商品描述", 
+        value=default_product.get("description", ""), 
+        key="description",
+        disabled=bool(st.session_state.product_data))
+
 # 如果有搜索结果，显示清除按钮
 if st.session_state.product_data:
     if st.button("清除搜索结果", type="secondary"):
         st.session_state.product_data = {}
         st.session_state.product_fetched = False
         st.rerun()
+
+st.markdown("---")
 
 # -------------------- 贸易术语 & 支付方式 --------------------
 st.markdown("### 📋 贸易术语 & 支付方式")
@@ -1471,13 +1610,13 @@ if calculate_pressed:
         total_gross_weight = total_packages * gross_weight
         total_net_weight = total_packages * net_weight
         
-        # 计算运输方案
+        # 计算运输方案（使用普柜LCL费率，后续可根据需要修改）
         shipping_options, best_index = calculate_shipping_options(
             total_volume, 
             total_gross_weight,
             st.session_state.freight_rates,
-            st.session_state.lcl_rate_cbm,
-            st.session_state.lcl_rate_kg
+            st.session_state.lcl_rate_cbm_normal,  # 使用普柜LCL(M)费率
+            st.session_state.lcl_rate_kg_normal    # 使用普柜LCL(W)费率
         )
         
         best_option = shipping_options[best_index]
@@ -1641,6 +1780,7 @@ with col_footer2:
     st.markdown("技术支持: AI价到团队")
 with col_footer3:
     st.markdown("PAD数据源: 阿里巴巴国际站 | Excel数据源: C:\\Basic Information\\Data.xlsx")
+
 
 
 
